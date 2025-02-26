@@ -3,23 +3,25 @@ import unittest
 
 import torch
 
-from gromo.graph_network.dag_growing_network import GraphGrowingNetwork
-from gromo.graph_network.GrowableDAG import GrowableDAG
+from gromo.containers.growing_dag import GrowingDAG
+from gromo.containers.growing_graph_network import GrowingGraphNetwork
 from gromo.utils.utils import global_device
 
 
-class TestGraphGrowingNetwork(unittest.TestCase):
+class TestGrowingGraphNetwork(unittest.TestCase):
     def setUp(self) -> None:
         self.in_features = 5
         self.out_features = 2
         self.batch_size = 8
-        self.net = GraphGrowingNetwork(
+        self.net = GrowingGraphNetwork(
             in_features=self.in_features,
             out_features=self.out_features,
-            with_logger=False,
         )
         self.net.dag.add_node_with_two_edges(
-            "start", "1", "end", node_attributes={"type": "L", "size": self.net.neurons}
+            "start",
+            "1",
+            "end",
+            node_attributes={"type": "linear", "size": self.net.neurons},
         )
         self.x = torch.rand(
             (self.batch_size, self.in_features),
@@ -50,7 +52,7 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             "1": torch.rand((self.batch_size, self.net.neurons), device=global_device()),
         }
 
-        self.generations = self.net.define_next_generations()
+        self.generations = self.net.dag.define_next_generations()
 
     def test_init_empty_graph(self) -> None:
         self.net.init_empty_graph()
@@ -64,8 +66,8 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         self.assertEqual(self.net.dag.out_degree("end"), 0)
         self.assertEqual(self.net.dag.nodes["start"]["size"], self.in_features)
         self.assertEqual(self.net.dag.nodes["end"]["size"], self.out_features)
-        self.assertEqual(self.net.dag.nodes["start"]["type"], "L")
-        self.assertEqual(self.net.dag.nodes["end"]["type"], "L")
+        self.assertEqual(self.net.dag.nodes["start"]["type"], "linear")
+        self.assertEqual(self.net.dag.nodes["end"]["type"], "linear")
         self.assertFalse(self.net.dag.nodes["end"]["use_batch_norm"])
 
     def test_growth_history_step(self) -> None:
@@ -88,28 +90,28 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         self.assertEqual(self.net.growth_history[self.net.global_step]["1"], 2)
         self.assertNotIn("2", self.net.growth_history[self.net.global_step])
 
-    def test_setup_train_datasets(self) -> None:
-        dataset = torch.utils.data.TensorDataset(self.x, self.y)
-        dev_len = int(len(self.x) / 3)
-        train_len = len(self.x) - dev_len * 2
-        global_device_type = global_device().type
+    # def test_setup_train_datasets(self) -> None:
+    #     dataset = torch.utils.data.TensorDataset(self.x, self.y)
+    #     dev_len = int(len(self.x) / 3)
+    #     train_len = len(self.x) - dev_len * 2
+    #     global_device_type = global_device().type
 
-        X_train, Y_train, X_dev, Y_dev, X_val, Y_val = self.net.setup_train_datasets(
-            dataset, torch.Generator()
-        )
+    #     X_train, Y_train, X_dev, Y_dev, X_val, Y_val = self.net.setup_train_datasets(
+    #         dataset, torch.Generator()
+    #     )
 
-        self.assertEqual(X_train.shape, (train_len, self.in_features))
-        self.assertEqual(Y_train.shape, (train_len,))
-        self.assertEqual(X_train.device.type, global_device_type)
-        self.assertEqual(Y_train.device.type, global_device_type)
-        self.assertEqual(X_dev.shape, (dev_len, self.in_features))
-        self.assertEqual(Y_dev.shape, (dev_len,))
-        self.assertEqual(X_dev.device.type, global_device_type)
-        self.assertEqual(Y_dev.device.type, global_device_type)
-        self.assertEqual(X_val.shape, (dev_len, self.in_features))
-        self.assertEqual(Y_val.shape, (dev_len,))
-        self.assertEqual(X_val.device.type, global_device_type)
-        self.assertEqual(Y_val.device.type, global_device_type)
+    #     self.assertEqual(X_train.shape, (train_len, self.in_features))
+    #     self.assertEqual(Y_train.shape, (train_len,))
+    #     self.assertEqual(X_train.device.type, global_device_type)
+    #     self.assertEqual(Y_train.device.type, global_device_type)
+    #     self.assertEqual(X_dev.shape, (dev_len, self.in_features))
+    #     self.assertEqual(Y_dev.shape, (dev_len,))
+    #     self.assertEqual(X_dev.device.type, global_device_type)
+    #     self.assertEqual(Y_dev.device.type, global_device_type)
+    #     self.assertEqual(X_val.shape, (dev_len, self.in_features))
+    #     self.assertEqual(Y_val.shape, (dev_len,))
+    #     self.assertEqual(X_val.device.type, global_device_type)
+    #     self.assertEqual(Y_val.device.type, global_device_type)
 
     def test_expand_node(self) -> None:
         node = "1"
@@ -122,8 +124,6 @@ class TestGraphGrowingNetwork(unittest.TestCase):
                 next_nodes,
                 self.bottleneck,
                 self.input_B,
-                self.x,
-                self.y,
                 self.x_test,
                 self.y_test,
                 verbose=False,
@@ -156,8 +156,6 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             next_node,
             self.bottleneck,
             self.input_B,
-            self.x,
-            self.y,
             self.x_test,
             self.y_test,
             amplitude_factor=False,
@@ -258,12 +256,12 @@ class TestGraphGrowingNetwork(unittest.TestCase):
             self.assertIsNotNone(gen.get("BIC"))
 
             self.assertIsNotNone(gen.get("dag"))
-            self.assertIsInstance(gen.get("dag"), GrowableDAG)
+            self.assertIsInstance(gen.get("dag"), GrowingDAG)
             self.assertIsNotNone(gen.get("growth_history"))
             self.assertIsInstance(gen.get("growth_history"), dict)
 
     def test_calculate_bottleneck(self) -> None:
-        bottleneck, inputB = self.net.calculate_bottleneck(
+        bottleneck, inputB = self.net.dag.calculate_bottleneck(
             self.generations, self.x, self.y
         )
 
@@ -295,7 +293,7 @@ class TestGraphGrowingNetwork(unittest.TestCase):
         pass
 
     def test_choose_growth_best_option(self) -> None:
-        options = self.net.define_next_generations()
+        options = self.net.dag.define_next_generations()
         with self.assertRaises(KeyError):
             self.net.choose_growth_best_action(options, use_bic=False)
         with self.assertRaises(KeyError):

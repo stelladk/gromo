@@ -1,85 +1,87 @@
-import copy
 from collections import deque
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
-import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
 import torch
 import torch.nn as nn
 
-
-try:
-    from constant_module import ConstantModule  # type: ignore
-    from linear_growing_module import (  # type: ignore
-        LinearAdditionGrowingModule,
-        LinearGrowingModule,
-    )
-    from pyvis.network import Network as Pyvisnet
-    from utils.profiling import profile_function  # type: ignore
-    from utils.utils import DAG_to_pyvis, activation_fn, global_device  # type: ignore
-except ImportError:
-    from pyvis.network import Network as Pyvisnet
-
-    from gromo.constant_module import ConstantModule
-    from gromo.linear_growing_module import (
-        LinearAdditionGrowingModule,
-        LinearGrowingModule,
-    )
-    from gromo.utils.profiling import profile_function
-    from gromo.utils.utils import DAG_to_pyvis, activation_fn, global_device
+from gromo.containers.growing_container import GrowingContainer, safe_forward
+from gromo.modules.constant_module import ConstantModule
+from gromo.modules.linear_growing_module import (
+    LinearAdditionGrowingModule,
+    LinearGrowingModule,
+)
+from gromo.utils.utils import activation_fn
 
 
-def safe_forward(self, input: torch.Tensor) -> torch.Tensor:
-    """Safe Linear forward function for empty input tensors
-    Resolves bug with shape transformation when using cuda
-
-    Parameters
-    ----------
-    input : torch.Tensor
-        input tensor
-
-    Returns
-    -------
-    torch.Tensor
-        F.linear forward function output
-    """
-    assert (
-        input.shape[-1] == self.in_features
-    ), f"Input shape {input.shape} must match the input feature size. Expected: {self.in_features}, Found: {input.shape[1]}"
-    if self.in_features == 0:
-        return torch.zeros(
-            input.shape[0], self.out_features, device=global_device(), requires_grad=True
-        )
-    return nn.functional.linear(input, self.weight, self.bias)
-
-
-class GrowableDAG(nx.DiGraph, nn.Module):
+class GrowingDAG(nx.DiGraph, GrowingContainer):
     def __init__(
-        self, DAG_parameters: dict = {}, device: str | None = None, **kwargs
+        self,
+        in_features: int,
+        out_features: int,
+        neurons: int,
+        use_bias: bool,
+        use_batch_norm: bool,
+        layer_type: str,
+        activation: str = "selu",
+        root: str = "start",
+        end: str = "end",
+        DAG_parameters: dict = None,
+        seed: int | None = None,
+        device: torch.device | str | None = None,
+        **kwargs,
     ) -> None:
-        # super(GrowableDAG, self).__init__(**kwargs)
         nx.DiGraph.__init__(self, **kwargs)
-        nn.Module.__init__(self, **kwargs)
+        GrowingContainer.__init__(
+            self,
+            in_features=in_features,
+            out_features=out_features,
+            use_bias=use_bias,
+            layer_type=layer_type,
+            activation=activation,
+            seed=seed,
+            device=device,
+        )
+        self.neurons = neurons
+        self.use_batch_norm = use_batch_norm
+        self.root = root
+        self.end = end
         self.flatten = nn.Flatten(start_dim=1)
-        self.device: torch.device = torch.device(device) if device else global_device()
+
+        if DAG_parameters is None:
+            DAG_parameters = self.init_dag_parameters()
 
         edges = DAG_parameters.get("edges", [])
         edge_attributes = DAG_parameters.get("edge_attributes", {})
         node_attributes = DAG_parameters.get("node_attributes", {})
-        self.root = DAG_parameters.get("start", "start")
-        self.end = DAG_parameters.get("end", "end")
         self.ancestors = {}
 
         self.add_edges_from(edges)
-        # nx.set_node_attributes(self, node_attributes)
         self.update_nodes(self.nodes, node_attributes)
         self.update_edges(edges, edge_attributes)
         self.update_connections(edges)
-        self.id_last_node_added = np.max(len(node_attributes.keys()) - 2, 0)
+        self.id_last_node_added = max(len(node_attributes.keys()) - 2, 0)
 
-        # Enact safe forward for layers with zero in_features, reverted see PR #70
-        # nn.Linear.forward = safe_forward
+    def init_dag_parameters(self) -> dict:
+        edges = [(self.root, self.end)]
+        node_attributes = {
+            self.root: {
+                "type": self.layer_type,  # shows what follows
+                "size": self.in_features,
+            },
+            self.end: {
+                "type": self.layer_type,
+                "size": self.out_features,
+                "use_batch_norm": self.use_batch_norm,
+            },
+        }
+        edge_attributes = {"type": self.layer_type, "use_bias": self.use_bias}
+
+        DAG_parameters = {}
+        DAG_parameters["edges"] = edges
+        DAG_parameters["node_attributes"] = node_attributes
+        DAG_parameters["edge_attributes"] = edge_attributes
+        return DAG_parameters
 
     @property
     def nodes(self) -> nx.reportviews.NodeView:
@@ -314,9 +316,9 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                     'The size of the node should be specified at initialization. Example: key "size" in node_attributes[new_node]'
                 )
             self.nodes[node].update(attributes)
-            if self.nodes[node]["type"] == "L":
+            if self.nodes[node]["type"] == "linear":
                 in_features = self.nodes[node]["size"]
-                if attributes.get("use_batch_norm", False):
+                if attributes.get("use_batch_norm", self.use_batch_norm):
                     batch_norm = nn.BatchNorm1d(
                         in_features, affine=False, device=self.device
                     )
@@ -362,8 +364,8 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                 self[prev_node][next_node]["type"] = "constant"
             # If both nodes are linear
             elif (
-                self.nodes[prev_node]["type"] == "L"
-                and self.nodes[next_node]["type"] == "L"
+                self.nodes[prev_node]["type"] == "linear"
+                and self.nodes[next_node]["type"] == "linear"
             ):
                 self.__set_edge_module(
                     prev_node,
@@ -371,12 +373,12 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                     LinearGrowingModule(
                         in_features=self.nodes[prev_node]["size"],
                         out_features=self.nodes[next_node]["size"],
-                        use_bias=edge_attributes.get("use_bias", True),
+                        use_bias=edge_attributes.get("use_bias", self.use_bias),
                         device=self.device,
                         name=f"l{prev_node}_{next_node}",
                     ),
                 )
-                self[prev_node][next_node]["type"] = "L"
+                self[prev_node][next_node]["type"] = "linear"
                 # TODO: set bias to zeros
 
     def update_connections(self, edges: list) -> None:
@@ -417,7 +419,129 @@ class GrowableDAG(nx.DiGraph, nn.Module):
     def is_empty(self) -> bool:
         return nx.is_empty(self)
 
-    @profile_function
+    def calculate_bottleneck(
+        self,
+        generations: list[dict],
+        X: torch.Tensor,
+        Y: torch.Tensor,
+        loss_fn: Callable = nn.CrossEntropyLoss(),
+    ) -> tuple[dict, dict]:
+        """Calculate expressivity bottleneck on important nodes
+        Assign hooks where necessary and update tensors with a single forward-backward
+        Keep track of bottleneck and post-activities
+
+        Parameters
+        ----------
+        generations : list[dict]
+            list of dictionaries with growth actions information
+        X : torch.Tensor
+            train features
+        Y : torch.Tensor
+            train labels
+        loss_fn : Callable, optional
+            loss function for bottleneck calculation, by default torch.nn.CrossEntropyLoss
+
+        Returns
+        -------
+        tuple[dict, dict]
+            bottleneck of nodes, input of nodes
+        """
+        # Handle empty graph case
+        constant_module = False
+        if self.is_empty():
+            # Create constant module if the graph is empty
+            constant_module = True
+            edge_attributes = {
+                "type": self.layer_type,
+                "use_bias": self.use_bias,
+                "constant": True,
+            }
+            self.add_direct_edge(self.root, self.end, edge_attributes)
+
+        # Find nodes of interest
+        prev_node_modules = set()
+        next_node_modules = set()
+        for gen in generations:
+            attributes = gen.get("attributes", {})
+
+            prev_node = attributes.get("previous_node")
+            next_node = attributes.get("next_node")
+            if not isinstance(prev_node, list):
+                prev_node = [prev_node]
+            if not isinstance(next_node, list):
+                next_node = [next_node]
+
+            prev_node_modules.update(prev_node)
+            next_node_modules.update(next_node)
+
+        # Add hooks on node modules of interest
+        prev_node_modules = self.get_node_modules(prev_node_modules)
+        next_node_modules = self.get_node_modules(next_node_modules)
+        for node_module in prev_node_modules:
+            node_module.store_activity = True
+        for node_module in next_node_modules:
+            node_module.init_computation()
+
+        # Forward - Backward step
+        pred = self(X)
+        loss = loss_fn(pred, Y)
+        loss.backward()
+
+        input_B = {}
+        bottleneck = {}
+
+        # Update tensors
+        for node_module in next_node_modules:
+            assert node_module.previous_tensor_s is not None
+            assert node_module.previous_tensor_m is not None
+            node_module.previous_tensor_s.update()
+            node_module.previous_tensor_m.update()
+
+            # Compute optimal possible updates
+            deltas = node_module.compute_optimal_delta(update=True, return_deltas=True)
+
+            # Compute expressivity bottleneck
+            bottleneck[node_module._name] = (
+                node_module.projected_v_goal().clone().detach()
+            )  # (batch_size, out_features)
+
+            del deltas
+            # TODO: separate to functions that add the hooks and remove them
+
+            if constant_module:
+                assert torch.all(
+                    bottleneck[node_module._name] == node_module.pre_activity.grad
+                ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
+
+            # Reset tensors and remove hooks
+            node_module.reset_computation()
+
+        # Retrieve input activities
+        for node_module in prev_node_modules:
+            assert node_module.activity is not None
+            # Save input activity of input layers
+            input_B[node_module._name] = node_module.activity.clone().detach()
+
+            # Reset tensors and remove hooks
+            node_module.store_activity = False
+            # node_module.delete_update()
+
+        # Reset all hooks
+        for next_node_module in next_node_modules:
+            for parallel_module in next_node_module.previous_modules:
+                parallel_module.reset_computation()
+                # DO NOT delete updates
+                # parallel_module.delete_update(include_previous=False)
+            # Delete activities
+            next_node_module.delete_update()
+
+        if constant_module:
+            # Remove constant module if needed
+            self.remove_direct_edge(self.root, self.end)
+            self.remove_direct_edge(self.root, self.end)
+
+        return bottleneck, input_B
+
     def _get_ancestors(self, root: str, pre_root: int = 0) -> None:
         """Discover all eventual ancestors of nodes
 
@@ -439,7 +563,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
             q = deque([(pre_root, root)])
             self.__recursiveBFS(q, nodes_visited={}, update=True)
 
-    @profile_function
     def _indirect_connection_exists(self, prev_node: str, next_node: str) -> bool:
         """Check if two nodes are connected with one-hop links
 
@@ -460,7 +583,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         intermediate_nodes = successors.intersection(predecessors)
         return len(intermediate_nodes) > 0
 
-    @profile_function
     def _find_possible_direct_connections(
         self, direct_successors: Mapping[str, list[str]] | Mapping[str, set[str]]
     ) -> list[dict]:
@@ -480,8 +602,8 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         for prev_node, successors in direct_successors.items():
             for next_node in successors:
                 # TODO: create getter for types
-                if (self.nodes[prev_node]["type"] == "L") and (
-                    self.nodes[next_node]["type"] == "L"
+                if (self.nodes[prev_node]["type"] == "linear") and (
+                    self.nodes[next_node]["type"] == "linear"
                 ):
                     direct_edges.append(
                         {"previous_node": prev_node, "next_node": next_node}
@@ -489,7 +611,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
         return direct_edges
 
-    @profile_function
     def _find_possible_one_hop_connections(
         self,
         successors: Mapping[str, list[str]] | Mapping[str, set[str]],
@@ -514,8 +635,8 @@ class GrowableDAG(nx.DiGraph, nn.Module):
         new_node = str(self.id_last_node_added + 1)
         for prev_node, succ in successors.items():
             for next_node in succ:
-                if (self.nodes[prev_node]["type"] == "L") and (
-                    self.nodes[next_node]["type"] == "L"
+                if (self.nodes[prev_node]["type"] == "linear") and (
+                    self.nodes[next_node]["type"] == "linear"
                 ):
                     if not self._indirect_connection_exists(prev_node, next_node):
                         one_hop_edges.append(
@@ -524,16 +645,15 @@ class GrowableDAG(nx.DiGraph, nn.Module):
                                 "new_node": new_node,
                                 "next_node": next_node,
                                 "node_attributes": {
-                                    "type": "L",
+                                    "type": self.layer_type,
                                     "size": size,
-                                    "activation": "selu",
+                                    "activation": self.activation,
                                 },
                             }
                         )
 
         return one_hop_edges
 
-    @profile_function
     def find_possible_extensions(self) -> tuple[list[dict], list[dict]]:
         """Discover all possible direct and one-hop connections of the graph
 
@@ -567,7 +687,80 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
         return direct_edges, one_hop_edges
 
-    @profile_function
+    def define_next_generations(self) -> list[dict]:
+        """Find all possible growth extensions for the current graph
+
+        Returns
+        -------
+        list[dict]
+            list of dictionaries with growth actions information
+        """
+        # TODO: check if they allow growing
+        direct_edges, one_hop_edges = self.find_possible_extensions()
+
+        # gen_id = 0
+        generations = []
+
+        # All possible new direct edges
+        for attr in direct_edges:
+            previous_node = attr.get("previous_node")
+            next_node = attr.get("next_node")
+
+            edge_name = f"l{previous_node}_{next_node}"
+            gen = {
+                "type": "edge",
+                "attributes": attr,
+                "id": edge_name,
+                "evolved": False,
+            }
+            generations.append(gen)
+
+        # All possible one-hop connections
+        for attr in one_hop_edges:
+            previous_node = attr.get("previous_node")
+            new_node = attr.get("new_node")
+            next_node = attr.get("next_node")
+            new_edges = [
+                (previous_node, new_node),
+                (new_node, next_node),
+            ]
+            attr["new_edges"] = new_edges
+
+            gen = {
+                "type": "node",
+                "attributes": attr,
+                "id": new_node,
+                "evolved": False,
+            }
+            generations.append(gen)
+
+        # All existing nodes
+        for node in self.nodes:
+            if (node == self.root) or (node == self.end):
+                continue
+
+            previous_nodes = [n for n in self.predecessors(node)]
+            next_nodes = [n for n in self.successors(node)]
+
+            new_edges = [in_edge for in_edge in self.in_edges(node)]
+            new_edges.extend([out_edge for out_edge in self.out_edges(node)])
+
+            attr = {
+                "new_node": node,
+                "previous_node": previous_nodes,
+                "next_node": next_nodes,
+                "new_edges": new_edges,
+            }
+            gen = {
+                "type": "node",
+                "attributes": attr,
+                "id": node,
+                "evolved": False,
+            }
+            generations.append(gen)
+
+        return generations
+
     def __recursiveBFS(self, q: deque, nodes_visited: dict, update: bool) -> None:
         """Breadth First Search recursive function to find ancestors
 
@@ -597,63 +790,6 @@ class GrowableDAG(nx.DiGraph, nn.Module):
 
         self.__recursiveBFS(q, nodes_visited, update)
 
-    def draw(self) -> None:
-        """
-        Draw graph on plot
-        """
-        plt.figure()
-        G = copy.deepcopy(self)
-
-        try:
-            pos = nx.planar_layout(G)
-        except:
-            pos = nx.shell_layout(G)
-
-        for edge in G.edges:
-            if G.edges[edge]["type"] == "C":
-                G.edges[edge]["style"] = "dashed"
-            if G.edges[edge]["type"] == "L":
-                G.edges[edge]["style"] = "solid"
-
-            nx.draw_networkx_edges(G, pos, [edge], style=G.edges[edge]["style"])
-
-        for node in G.nodes:
-            if G.nodes[node]["type"] == "L":
-                G.nodes[node]["color"] = "#42cafd"
-                G.nodes[node]["shape"] = "o"
-            elif G.nodes[node]["type"] == "C":
-                G.nodes[node]["color"] = "#edd83d"
-                G.nodes[node]["shape"] = "s"
-
-            if node == self.root:
-                G.nodes[node]["color"] = "#09bc8a"
-            elif node == self.end:
-                G.nodes[node]["color"] = "#f55536"
-
-            nx.draw_networkx_nodes(
-                G,
-                pos,
-                nodelist=[node],
-                node_shape=G.nodes[node]["shape"],
-                node_color=G.nodes[node]["color"],
-            )
-
-        # nx.draw_networkx_edges(G, pos)
-        nx.draw_networkx_labels(G, pos)
-        plt.show()
-
-    def animate(self) -> Pyvisnet:
-        """Create animated version of DAG with pyvis Network
-
-        Returns
-        -------
-        Pyvisnet
-            pyvis network
-        """
-
-        return DAG_to_pyvis(self)
-
-    @profile_function
     def forward(self, x: torch.Tensor, verbose: bool = False) -> torch.Tensor:
         """Forward function for DAG model
 
