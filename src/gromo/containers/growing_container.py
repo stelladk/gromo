@@ -44,6 +44,7 @@ class GrowingContainer(torch.nn.Module):
         self.out_features = out_features
 
         self.growing_layers = torch.nn.ModuleList()
+        self.currently_updated_layer_index = None
 
     def set_growing_layers(self):
         """
@@ -52,18 +53,6 @@ class GrowingContainer(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def init_computation(self):
-        """Initialize statistics computations for growth procedure"""
-        for layer in self.growing_layers:
-            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
-                layer.init_computation()
-
-    def reset_computation(self):
-        """Reset statistics computations for growth procedure"""
-        for layer in self.growing_layers:
-            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
-                layer.reset_computation()
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the network"""
         raise NotImplementedError
@@ -71,3 +60,52 @@ class GrowingContainer(torch.nn.Module):
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Extended forward pass through the network"""
         raise NotImplementedError
+
+    def init_computation(self):
+        """Initialize statistics computations for growth procedure"""
+        for layer in self.growing_layers:
+            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+                layer.init_computation()
+
+    def update_computation(self):
+        """Update statistics computations for growth procedure"""
+        for layer in self.growing_layers:
+            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+                layer.update_computation()
+
+    def reset_computation(self):
+        """Reset statistics computations for growth procedure"""
+        for layer in self.growing_layers:
+            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+                layer.reset_computation()
+
+    def compute_optimal_updates(self, *args, **kwargs):
+        """Compute optimal updates for growth procedure"""
+        for layer in self.growing_layers:
+            if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
+                layer.compute_optimal_updates(*args, **kwargs)
+
+    def select_best_update(self):
+        """Select the best update for growth procedure"""
+        first_order_improvements = [
+            layer.first_order_improvement for layer in self.growing_layers
+        ]
+        best_layer_idx = torch.argmax(torch.stack(first_order_improvements))
+        self.currently_updated_layer_index = best_layer_idx
+
+        for idx, layer in enumerate(self.growing_layers):
+            if idx != best_layer_idx:
+                layer.delete_update()
+
+    @property
+    def currently_updated_layer(self):
+        """Get the currently updated layer"""
+        assert self.currently_updated_layer_index is not None, "No layer to update"
+        return self.growing_layers[self.currently_updated_layer_index]
+
+    def apply_change(self):
+        """Apply changes to the model"""
+        assert self.currently_updated_layer is not None, "No layer to update"
+        self.currently_updated_layer.apply_change()
+        self.currently_updated_layer.delete_update()
+        self.currently_updated_layer_index = None
