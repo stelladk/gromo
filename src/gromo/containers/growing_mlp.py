@@ -14,7 +14,6 @@ class GrowingMLP(GrowingContainer):
         number_hidden_layers: int,
         activation: nn.Module = nn.SELU(),
         use_bias: bool = True,
-        seed: int | None = None,
         device: torch.device = None,
     ):
         super(GrowingMLP, self).__init__(
@@ -22,13 +21,11 @@ class GrowingMLP(GrowingContainer):
             out_features=out_features,
             device=device,
         )
-        if seed is not None:
-            torch.manual_seed(seed)
+
         self.num_features = torch.tensor(self.in_features).prod().int().item()
 
         # flatten input
         self.flatten = nn.Flatten(start_dim=1)
-        # self.layers: list[GrowingModule] = []
         self.layers = nn.ModuleList()
         self.layers.append(
             LinearGrowingModule(
@@ -60,9 +57,12 @@ class GrowingMLP(GrowingContainer):
             )
         )
 
+        self.set_growing_layers()
         self.updates_values = None
-        self.currently_updated_layer = None
         self.currently_updated_layer_index = None
+
+    def set_growing_layers(self):
+        self.growing_layers = self.layers[1:]
 
     def number_of_parameters(self) -> int:
         """
@@ -134,72 +134,20 @@ class GrowingMLP(GrowingContainer):
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
 
-    def init_computation(self):
-        for layer in self.layers:
-            layer.init_computation()
-
-    def reset_computation(self):
-        for layer in self.layers:
-            layer.reset_computation()
-
-    def update_computation(self):
-        for layer in self.layers:
-            layer.update_computation()
-
-    def compute_optimal_update(
-        self,
-        part: str = "all",
-        numerical_threshold: float = 1e-10,
-        statistical_threshold: float = 1e-5,
-        maximum_added_neurons: int | None = None,
-        dtype: torch.dtype = torch.float32,
-    ):
-        assert part in [
-            "all",
-            "parameter",
-            "neuron",
-        ], f"{part=} should be in ['all', 'parameter', 'neuron']"
-        self.updates_values = []
-        for layer in self.layers:
-            if part == "parameter":
-                layer.compute_optimal_delta(dtype=dtype)
-            elif part == "neuron":
-                layer.compute_optimal_updates(
-                    zero_delta=True,
-                    numerical_threshold=numerical_threshold,
-                    statistical_threshold=statistical_threshold,
-                    maximum_added_neurons=maximum_added_neurons,
-                    dtype=dtype,
-                )
-                layer.optimal_delta_layer = None
-                layer.parameter_update_decrease = 0
-            elif part == "all":
-                layer.compute_optimal_updates(
-                    numerical_threshold=numerical_threshold,
-                    statistical_threshold=statistical_threshold,
-                    maximum_added_neurons=maximum_added_neurons,
-                    dtype=dtype,
-                )
-            # layer.compute_optimal_updates()
-            self.updates_values.append(layer.first_order_improvement)
-            # except AssertionError as e:
-            #     print(f"Layer {layer.name} cannot be updated: {e}")
-            #     self.updates_values.append(0)
-
     def update_information(self):
         information = dict()
-        for i, layer in enumerate(self.layers):
+        for i, layer in enumerate(self.growing_layers):
             layer_information = dict()
-            layer_information["update_value"] = self.updates_values[i]
+            layer_information["update_value"] = layer.first_order_improvement
             layer_information["parameter_improvement"] = layer.parameter_update_decrease
             layer_information["eigenvalues_extension"] = layer.eigenvalues_extension
             information[i] = layer_information
         return information
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
-        for i, layer in enumerate(self.layers):
+        for i, layer in enumerate(self.growing_layers):
             if verbose:
-                print(f"Layer {i} update: {self.updates_values[i]}")
+                print(f"Layer {i} update: {layer.first_order_improvement}")
                 print(
                     f"Layer {i} parameter improvement: {layer.parameter_update_decrease}"
                 )
@@ -209,42 +157,8 @@ class GrowingMLP(GrowingContainer):
                     print(f"Deleting layer {i}")
                 layer.delete_update()
             else:
-                self.currently_updated_layer = layer
                 self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
-
-    def select_best_update(self, verbose: bool = False) -> int:
-        max_update = max(self.updates_values)
-        for i, layer in enumerate(self.layers):
-            if verbose:
-                print(f"Layer {i} update: {self.updates_values[i]}")
-                print(
-                    f"Layer {i} parameter improvement: {layer.parameter_update_decrease}"
-                )
-                print(f"Layer {i} eigenvalues extension: {layer.eigenvalues_extension}")
-            if self.updates_values[i] < max_update:
-                if verbose:
-                    print(f"Deleting layer {i}")
-                layer.delete_update()
-            else:
-                self.currently_updated_layer = layer
-                self.currently_updated_layer_index = i
-        return self.currently_updated_layer_index
-
-    def apply_update(self):
-        self.currently_updated_layer.apply_change()
-
-    @property
-    def amplitude_factor(self):
-        return self.currently_updated_layer.scaling_factor
-
-    def __setattr__(self, key, value):
-        if key == "amplitude_factor":
-            for layer in self.layers:
-                layer.scaling_factor = value
-        else:
-            nn.Module.__setattr__(self, key, value)
-            # super(GrowingMLP, self).__setattr__(key, value)
 
     @staticmethod
     def tensor_statistics(tensor) -> dict[str, float]:
