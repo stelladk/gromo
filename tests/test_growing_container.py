@@ -94,7 +94,11 @@ class TestGrowingContainer(unittest.TestCase):
                         f"update_computation was not called on the growing layer for {tensor_name}",
                     )
                 if layer.previous_module is not None:
-                    for tensor_name in ["tensor_m_prev", "cross_covariance"]:
+                    for tensor_name in [
+                        "tensor_m_prev",
+                        "cross_covariance",
+                        "tensor_s_growth",
+                    ]:
                         self.assertEqual(
                             getattr(layer, tensor_name).samples,
                             (i + 1) * self.batch_size,
@@ -123,6 +127,7 @@ class TestGrowingContainer(unittest.TestCase):
                 "tensor_m",
                 "tensor_m_prev",
                 "cross_covariance",
+                "tensor_s_growth",
             ]:
                 self.assertIsNone(
                     getattr(layer, tensor_name)._tensor,
