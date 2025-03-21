@@ -1,20 +1,168 @@
 """
 Module to define a two layer block similar to a BasicBlock in ResNet.
 """
-
 import torch
 import torch.nn as nn
+from torch import Tensor
+from typing import Optional, Dict, Any
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.modules.linear_growing_module import (
-    LinearAdditionGrowingModule,
-    LinearGrowingModule,
-)
+from gromo.modules.linear_growing_module import LinearGrowingModule
 
 
-all_layer_types = {
-    "linear": {"layer": LinearGrowingModule, "addition": LinearAdditionGrowingModule},
-}
+class GrowingResidualBlock(GrowingContainer):
+    """
+    Represents a block of a growing network.
+
+    Sequence of layers:
+    - Activation pre
+    - Layer first
+    - Activation mid
+    - Layer second
+    """
+
+    def __init__(
+        self,
+        num_features: int,
+        hidden_features: int = 0,
+        activation: Optional[nn.Module] = None,
+        name: str = "block",
+        kwargs_layer: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Initialize the block.
+
+        Parameters
+        ----------
+        num_features : int
+            Number of input and output features, in case of convolutional layer, the number of channels.
+        hidden_features : int
+            Number of hidden features, if zero the block is the zero function.
+        activation : Optional[nn.Module]
+            Activation function to use, if None use the identity function.
+        name : str
+            Name of the block.
+        kwargs_layer : Optional[Dict[str, Any]]
+            Dictionary of arguments for the layers (e.g., bias, ...).
+        """
+        if kwargs_layer is None:
+            kwargs_layer = {}
+
+        super().__init__(in_features=num_features, out_features=num_features)
+        self.name = name
+        self.num_features = num_features
+        self.hidden_features = hidden_features
+
+        self.norm = nn.LayerNorm(num_features, elementwise_affine=False, device=self.device)
+        self.activation = activation if activation is not None else nn.Identity()
+        self.first_layer = LinearGrowingModule(
+            num_features,
+            hidden_features,
+            post_layer_function=self.activation,
+            name="first_layer",
+            **kwargs_layer,
+        )
+        self.second_layer = LinearGrowingModule(
+            hidden_features,
+            num_features,
+            post_layer_function=nn.Identity(),
+            previous_module=self.first_layer,
+            name="second_layer",
+            **kwargs_layer,
+        )
+
+        self.enable_extended_forward = False
+        self.set_growing_layers()
+
+    def set_growing_layers(self) -> None:
+        self.growing_layers = nn.ModuleList([self.second_layer])
+
+    def extended_forward(self, x: Tensor) -> Tensor:
+        """
+        Forward pass of the block with the current modifications.
+
+        Parameters
+        ----------
+        x : Tensor
+            Input tensor.
+
+        Returns
+        -------
+        Tensor
+            Output tensor.
+        """
+        if self.hidden_features > 0:
+            x = self.norm(x)
+            y = self.activation(x)
+            y, y_ext = self.first_layer.extended_forward(y)
+            y, _ = self.second_layer.extended_forward(y, y_ext)
+            assert _ is None, f"The output of layer 2 {self.second_layer.name} should not be extended."
+            del y_ext
+            x = y + x
+        return x
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Forward pass of the block.
+
+        Parameters
+        ----------
+        x : Tensor
+            Input tensor.
+
+        Returns
+        -------
+        Tensor
+            Output tensor.
+        """
+        if self.hidden_features > 0:
+            x = self.norm(x)
+            y = self.activation(x)
+            y = self.first_layer(y)
+            y = self.second_layer(y)
+            x = y + x
+        return x
+
+    def number_of_parameters(self) -> int:
+        num_param = self.first_layer.number_of_parameters()
+        num_param += self.second_layer.number_of_parameters()
+        return num_param
+
+    @staticmethod
+    def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
+        min_value = tensor.min().item()
+        max_value = tensor.max().item()
+        mean_value = tensor.mean().item()
+        std_value = tensor.std().item() if tensor.numel() > 1 else -1
+        return {
+            "min": min_value,
+            "max": max_value,
+            "mean": mean_value,
+            "std": std_value,
+        }
+
+    def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
+        statistics = {}
+        statistics[0] = {
+            "weight": self.tensor_statistics(self.first_layer.weight),
+        }
+        if self.first_layer.bias is not None:
+            statistics[0]["bias"] = self.tensor_statistics(self.first_layer.bias)
+        statistics[1] = {
+            "weight": self.tensor_statistics(self.second_layer.weight),
+        }
+        if self.second_layer.bias is not None:
+            statistics[1]["bias"] = self.tensor_statistics(self.second_layer.bias)
+        statistics["hidden_shape"] = self.hidden_features
+        return statistics
+
+    def update_information(self) -> Dict[str, Any]:
+        layer_information = {
+            "update_value": self.second_layer.first_order_improvement,
+            "parameter_improvement": self.second_layer.parameter_update_decrease,
+            "eigenvalues_extension": self.second_layer.eigenvalues_extension,
+        }
+        return layer_information
 
 
 class GrowingResidualMLP(GrowingContainer):
@@ -31,7 +179,7 @@ class GrowingResidualMLP(GrowingContainer):
 
         in_features = torch.tensor(in_features).prod().int().item()
         super(GrowingResidualMLP, self).__init__(
-            in_features=torch.tensor(in_features).prod().int().item(),
+            in_features=in_features,
             out_features=out_features,
             device=device,
         )
@@ -40,10 +188,9 @@ class GrowingResidualMLP(GrowingContainer):
         self.num_blocks = num_blocks
 
         # embedding
-        # print(f"Embedding: {self.in_features} -> {self.num_features}")
         self.embedding = nn.Sequential(
             nn.Flatten(start_dim=1),
-            nn.Linear(self.in_features, num_features, device=self.device),
+            nn.Linear(in_features, num_features, device=self.device),
         )
 
         # blocks
@@ -60,7 +207,7 @@ class GrowingResidualMLP(GrowingContainer):
         )
 
         # final projection
-        self.projection = nn.Linear(num_features, self.out_features, device=self.device)
+        self.projection = nn.Linear(num_features, out_features, device=self.device)
         self.set_growing_layers()
 
     def set_growing_layers(self):
@@ -102,7 +249,6 @@ class GrowingResidualMLP(GrowingContainer):
             num_param += block.number_of_parameters()
         num_param += sum(p.numel() for p in self.projection.parameters())
         return num_param
-        # return sum(p.numel() for p in self.parameters())
 
     @staticmethod
     def tensor_statistics(tensor) -> dict[str, float]:
@@ -145,163 +291,37 @@ class GrowingResidualMLP(GrowingContainer):
         return information
 
 
-class GrowingResidualBlock(GrowingContainer):
-    """
-    Represents a block of a growing network.
+if __name__ == "__main__":
+    import torch
+    import torch.nn as nn
 
-    Sequence of layers:
-    - Activation pre
-    - Layer first
-    - Activation mid
-    - Layer second
-    """
+    # define the input shape
+    input_shape = (3, 32, 32)  # Example for 32x32 RGB image
+    # define the number of features
+    num_features = 64
+    # define the number of hidden features
+    hidden_features = 32
+    # define the number of output features
+    num_classes = 10
+    # define the number of blocks
+    num_blocks = 4
 
-    def __init__(
-        self,
-        num_features: int,
-        hidden_features: int = 0,
-        activation: torch.nn.Module | None = None,
-        name: str = "block",
-        kwargs_layer: dict | None = None,
-    ) -> None:
-        """
-        Initialise the block.
+    # create the growing residual MLP
+    model = GrowingResidualMLP(
+        in_features=input_shape,
+        out_features=num_classes,
+        num_features=num_features,
+        hidden_features=hidden_features,
+        num_blocks=num_blocks,
+        activation=nn.ReLU(),
+    )
 
-        Parameters
-        ----------
-        num_features: int
-            number of input and output features, in cas of convolutional layer, the number of channels
-        hidden_features: int
-            number of hidden features, if zero the block is the zero function
-        layer_type: str
-            type of layer to use either "linear" or "conv"
-        activation: torch.nn.Module | None
-            activation function to use, if None use the identity function
-        name: str
-            name of the block
-        kwargs_layer: dict | None
-            dictionary of arguments for the layers (e.g. bias, ...)
-        """
-        if kwargs_layer is None:
-            kwargs_layer = {}
+    # print the model
+    print(model)
 
-        super(GrowingResidualBlock, self).__init__(
-            in_features=num_features,
-            out_features=num_features,
-        )
-        self.name = name
-        self.num_features = num_features
-        self.hidden_features = hidden_features
-
-        self.norm = nn.LayerNorm(
-            num_features, elementwise_affine=False, device=self.device
-        )
-        self.activation: torch.nn.Module = activation
-        self.first_layer = LinearGrowingModule(
-            num_features,
-            hidden_features,
-            post_layer_function=self.activation,
-            name=f"first_layer",
-            **kwargs_layer,
-        )
-        self.second_layer = LinearGrowingModule(
-            hidden_features,
-            num_features,
-            post_layer_function=torch.nn.Identity(),
-            previous_module=self.first_layer,
-            name=f"second_layer",
-            **kwargs_layer,
-        )
-
-        self.enable_extended_forward = False
-
-        # self.activation_derivative = torch.func.grad(mid_activation)(torch.tensor(1e-5))
-        # TODO: FIX this
-        self.activation_derivative = 1
-
-    def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the block with the current modifications.
-
-        Parameters
-        ----------
-        x: torch.Tensor
-            input tensor
-
-        Returns
-        -------
-        torch.Tensor
-            output tensor
-        """
-
-        if self.hidden_features > 0:
-            x = self.norm(x)
-            y = self.activation(x)
-            y, y_ext = self.first_layer.extended_forward(y)
-            y, _ = self.second_layer.extended_forward(y, y_ext)
-            assert (
-                _ is None
-            ), f"The output of layer 2 {self.second_layer.name} should not be extended."
-            del y_ext
-            x = y + x
-        return x
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the block.
-
-        Parameters
-        ----------
-        x: torch.Tensor
-            input tensor
-
-        Returns
-        -------
-        torch.Tensor
-            output tensor
-        """
-        if self.hidden_features > 0:
-            x = self.norm(x)
-            y = self.activation(x)
-            y = self.first_layer(y)
-            y = self.second_layer(y)
-            x = y + x
-        return x
-
-    def sub_select_optimal_added_parameters(
-        self,
-        keep_neurons: int,
-    ) -> None:
-        """
-        Select the first keep_neurons neurons of the optimal added parameters.
-
-        Parameters
-        ----------
-        keep_neurons: int
-            number of neurons to keep
-        """
-        self.currently_updated_layer.eigenvalues = self.eigenvalues[:keep_neurons]
-        self.currently_updated_layer.second_layer.sub_select_optimal_added_parameters(
-            keep_neurons, sub_select_previous=True
-        )
-
-    def number_of_parameters(self):
-        num_param = self.first_layer.number_of_parameters()
-        num_param += self.second_layer.number_of_parameters()
-        return num_param
-
-    @staticmethod
-    def tensor_statistics(tensor) -> dict[str, float]:
-        min_value = tensor.min().item()
-        max_value = tensor.max().item()
-        mean_value = tensor.mean().item()
-        if tensor.numel() > 1:
-            std_value = tensor.std().item()
-        else:
-            std_value = -1
-        return {
-            "min": min_value,
-            "max": max_value,
-            "mean": mean_value,
-            "std": std_value,
-        }
+    # define the input tensor
+    x = torch.rand((2, *input_shape))
+    print(f"Input shape: {x.shape}")
+    # forward pass
+    y = model(x)
+    print(f"Output shape: {y.shape}")
