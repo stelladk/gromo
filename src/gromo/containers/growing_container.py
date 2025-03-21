@@ -125,3 +125,14 @@ class GrowingContainer(torch.nn.Module):
         self.currently_updated_layer.apply_change()
         self.currently_updated_layer.delete_update()
         self.currently_updated_layer_index = None
+
+    def number_of_parameters(self) -> int:
+        """
+        Number of parameters.
+
+        Returns
+        -------
+        int
+            Number of parameters.
+        """
+        return sum(p.numel() for p in self.parameters())

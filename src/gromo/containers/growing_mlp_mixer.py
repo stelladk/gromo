@@ -118,11 +118,6 @@ class GrowingMLPBlock(GrowingContainer):
         y = self.dropout(y)
         return y
 
-    def number_of_parameters(self) -> int:
-        num_param = self.first_layer.number_of_parameters()
-        num_param += self.second_layer.number_of_parameters()
-        return num_param
-
     @staticmethod
     def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
         min_value = tensor.min().item()
@@ -246,11 +241,6 @@ class GrowingTokenMixer(GrowingContainer):
         out = y + residual
         return out
 
-    def number_of_parameters(self) -> int:
-        return self.mlp.number_of_parameters() + sum(
-            p.numel() for p in self.norm.parameters()
-        )
-
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         return self.mlp.weights_statistics()
 
@@ -331,11 +321,6 @@ class GrowingChannelMixer(GrowingContainer):
         x = self.mlp.extended_forward(x)
         out = x + residual
         return out
-
-    def number_of_parameters(self) -> int:
-        return self.mlp.number_of_parameters() + sum(
-            p.numel() for p in self.norm.parameters()
-        )
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         return self.mlp.weights_statistics()
@@ -425,11 +410,6 @@ class GrowingMixerLayer(GrowingContainer):
         x = self.token_mixer.extended_forward(x)
         x = self.channel_mixer.extended_forward(x)
         return x
-
-    def number_of_parameters(self) -> int:
-        num_param = self.token_mixer.number_of_parameters()
-        num_param += self.channel_mixer.number_of_parameters()
-        return num_param
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         statistics = {}
@@ -575,13 +555,6 @@ class GrowingMLPMixer(GrowingContainer):
         embedding = embedding.mean(dim=1)
         logits = self.classifier(embedding)
         return logits
-
-    def number_of_parameters(self) -> int:
-        num_param = sum(p.numel() for p in self.patcher.parameters())
-        for mixer in self.mixers:
-            num_param += mixer.number_of_parameters()
-        num_param += sum(p.numel() for p in self.classifier.parameters())
-        return num_param
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         statistics = {}

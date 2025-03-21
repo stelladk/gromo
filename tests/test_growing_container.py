@@ -32,20 +32,20 @@ class TestGrowingContainer(unittest.TestCase):
 
     def setUp(self):
         # Create synthetic data
-        in_features = 2
-        out_features = 1
+        self.in_features = 2
+        self.out_features = 1
         self.num_samples = 20
         self.batch_size = 4
         self.dataloader = create_synthetic_data(
-            self.num_samples, in_features, out_features, self.batch_size
+            self.num_samples, self.in_features, self.out_features, self.batch_size
         )
 
         # Create a simple perceptron model
-        hidden_features = 4
+        self.hidden_features = 4
         self.model = Perceptron(
-            in_features=in_features,
-            out_features=out_features,
-            hidden_feature=hidden_features,
+            in_features=self.in_features,
+            out_features=self.out_features,
+            hidden_feature=self.hidden_features,
         )
         self.loss = nn.MSELoss()
 
@@ -148,23 +148,12 @@ class TestGrowingContainer(unittest.TestCase):
                     "compute_optimal_updates was not called on the growing layer",
                 )
 
-    def test_select_best_update(self):
-        # computing the optimal updates
-        gather_statistics(self.dataloader, self.model, self.loss)
-        self.model.compute_optimal_updates()
-        self.assertIsNone(
-            self.model.currently_updated_layer_index, "There should be no layer to update"
-        )
-
-        # selecting the best update
-        self.model.select_best_update()
-        self.assertIsNotNone(
-            self.model.currently_updated_layer_index, "No layer to update"
-        )
+    def check_update(self, model):
+        self.assertIsNotNone(model.currently_updated_layer_index, "No layer to update")
 
         # Check if the optimal updates are computed
-        for i, layer in enumerate(self.model.growing_layers):
-            if i != self.model.currently_updated_layer_index:
+        for i, layer in enumerate(model.growing_layers):
+            if i != model.currently_updated_layer_index:
                 self.assertIsNone(
                     layer.optimal_delta_layer,
                     "select_best_update was not called on the growing layer",
@@ -201,6 +190,35 @@ class TestGrowingContainer(unittest.TestCase):
                         "select_best_update was not called on the growing layer",
                     )
 
+    def test_select_best_update(self):
+        # computing the optimal updates
+        gather_statistics(self.dataloader, self.model, self.loss)
+        self.model.compute_optimal_updates()
+        self.assertIsNone(
+            self.model.currently_updated_layer_index, "There should be no layer to update"
+        )
+
+        # selecting the best update
+        self.model.select_best_update()
+        self.assertEqual(
+            self.model.currently_updated_layer_index,
+            0,
+            "The first layer should be selected for update",
+        )
+        self.check_update(self.model)
+
+    def test_select_update(self):
+        # computing the optimal updates
+        gather_statistics(self.dataloader, self.model, self.loss)
+        self.model.compute_optimal_updates()
+        self.assertIsNone(
+            self.model.currently_updated_layer_index, "There should be no layer to update"
+        )
+
+        # selecting the first update
+        layer_index = 0
+        self.model.select_update(layer_index=layer_index)
+
     def test_apply_change(self):
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
@@ -209,6 +227,19 @@ class TestGrowingContainer(unittest.TestCase):
         self.model.apply_change()
 
         self.assertIsNone(self.model.currently_updated_layer_index, "No layer to update")
+
+    def test_number_of_parameters(self):
+        theoretical_number_of_param = (
+            self.in_features * self.hidden_features
+            + self.hidden_features
+            + self.hidden_features * self.out_features
+            + self.out_features
+        )
+        self.assertEqual(
+            self.model.number_of_parameters(),
+            theoretical_number_of_param,
+            "Number of parameters is incorrect",
+        )
 
 
 if __name__ == "__main__":

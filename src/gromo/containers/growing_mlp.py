@@ -125,17 +125,6 @@ class GrowingMLP(GrowingContainer):
             x, x_ext = layer.extended_forward(x, x_ext)
         return x
 
-    def number_of_parameters(self) -> int:
-        """
-        Return the number of parameters of the model.
-
-        Returns
-        -------
-        int
-            Number of parameters.
-        """
-        return sum(layer.number_of_parameters() for layer in self.layers)
-
     @staticmethod
     def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
         min_value = tensor.min().item()

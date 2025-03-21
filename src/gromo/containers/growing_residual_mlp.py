@@ -129,11 +129,6 @@ class GrowingResidualBlock(GrowingContainer):
             x = y + x
         return x
 
-    def number_of_parameters(self) -> int:
-        num_param = self.first_layer.number_of_parameters()
-        num_param += self.second_layer.number_of_parameters()
-        return num_param
-
     @staticmethod
     def tensor_statistics(tensor: Tensor) -> Dict[str, float]:
         min_value = tensor.min().item()
@@ -248,13 +243,6 @@ class GrowingResidualMLP(GrowingContainer):
             else:
                 self.currently_updated_layer_index = i
         return self.currently_updated_layer_index
-
-    def number_of_parameters(self):
-        num_param = sum(p.numel() for p in self.embedding.parameters())
-        for block in self.blocks:
-            num_param += block.number_of_parameters()
-        num_param += sum(p.numel() for p in self.projection.parameters())
-        return num_param
 
     @staticmethod
     def tensor_statistics(tensor) -> dict[str, float]:
