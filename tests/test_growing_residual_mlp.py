@@ -12,21 +12,21 @@ class TestGrowingResidualMLP(TestCase):
         self.input_shape = (3, 32, 32)
         self.x = torch.randn(2, *self.input_shape, device=global_device())
         self.model = GrowingResidualMLP(
-            input_shape=self.input_shape,
+            in_features=self.input_shape,
+            out_features=10,
             num_features=16,
             hidden_features=8,
             num_blocks=2,
-            num_classes=10,
             activation=torch.nn.ReLU(),
         )
 
     def test_init(self):
         l1 = GrowingResidualMLP(
-            input_shape=self.input_shape,
+            in_features=self.input_shape,
+            out_features=10,
             num_features=16,
             hidden_features=8,
             num_blocks=2,
-            num_classes=10,
             activation=torch.nn.ReLU(),
         )
 
