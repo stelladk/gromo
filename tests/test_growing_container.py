@@ -148,76 +148,88 @@ class TestGrowingContainer(unittest.TestCase):
                     "compute_optimal_updates was not called on the growing layer",
                 )
 
-    def check_update(self, model):
+    def check_has_no_update(self, layer):
+        self.assertIsNone(
+            layer.optimal_delta_layer,
+            "select_best_update was not called on the growing layer",
+        )
+        self.assertIsNone(
+            layer.parameter_update_decrease,
+            "select_best_update was not called on the growing layer",
+        )
+        if layer.previous_module is not None:
+            self.assertIsNone(
+                layer.extended_input_layer,
+                "select_best_update was not called on the growing layer",
+            )
+            self.assertIsNone(
+                layer.previous_module.extended_output_layer,
+                "select_best_update was not called on the growing layer",
+            )
+
+    def check_has_update(self, layer):
+        self.assertIsNotNone(
+            layer.optimal_delta_layer,
+            "select_best_update was not called on the growing layer",
+        )
+        self.assertIsNotNone(
+            layer.parameter_update_decrease,
+            "select_best_update was not called on the growing layer",
+        )
+        if layer.previous_module is not None:
+            self.assertIsNotNone(
+                layer.extended_input_layer,
+                "select_best_update was not called on the growing layer",
+            )
+            self.assertIsNotNone(
+                layer.previous_module.extended_output_layer,
+                "select_best_update was not called on the growing layer",
+            )
+
+    def check_update_selection(self, model, layer_index=None):
         self.assertIsNotNone(model.currently_updated_layer_index, "No layer to update")
+        if layer_index is not None:
+            self.assertEqual(
+                model.currently_updated_layer_index,
+                layer_index,
+                "The selected layer index is incorrect",
+            )
 
         # Check if the optimal updates are computed
         for i, layer in enumerate(model.growing_layers):
             if i != model.currently_updated_layer_index:
-                self.assertIsNone(
-                    layer.optimal_delta_layer,
-                    "select_best_update was not called on the growing layer",
-                )
-                self.assertIsNone(
-                    layer.parameter_update_decrease,
-                    "select_best_update was not called on the growing layer",
-                )
-                if layer.previous_module is not None:
-                    self.assertIsNone(
-                        layer.extended_input_layer,
-                        "select_best_update was not called on the growing layer",
-                    )
-                    self.assertIsNone(
-                        layer.previous_module.extended_output_layer,
-                        "select_best_update was not called on the growing layer",
-                    )
+                self.check_has_no_update(layer)
             else:
-                self.assertIsNotNone(
-                    layer.optimal_delta_layer,
-                    "select_best_update was not called on the growing layer",
-                )
-                self.assertIsNotNone(
-                    layer.parameter_update_decrease,
-                    "select_best_update was not called on the growing layer",
-                )
-                if layer.previous_module is not None:
-                    self.assertIsNotNone(
-                        layer.extended_input_layer,
-                        "select_best_update was not called on the growing layer",
-                    )
-                    self.assertIsNotNone(
-                        layer.previous_module.extended_output_layer,
-                        "select_best_update was not called on the growing layer",
-                    )
+                self.check_has_update(layer)
 
     def test_select_best_update(self):
         # computing the optimal updates
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
         self.assertIsNone(
-            self.model.currently_updated_layer_index, "There should be no layer to update"
+            self.model.currently_updated_layer_index,
+            f"There should be no layer to update. "
+            f"Currently updated layer index: {self.model.currently_updated_layer_index}",
         )
 
         # selecting the best update
         self.model.select_best_update()
-        self.assertEqual(
-            self.model.currently_updated_layer_index,
-            0,
-            "The first layer should be selected for update",
-        )
-        self.check_update(self.model)
+        self.check_update_selection(self.model, layer_index=0)  # only one layer
 
     def test_select_update(self):
         # computing the optimal updates
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
         self.assertIsNone(
-            self.model.currently_updated_layer_index, "There should be no layer to update"
+            self.model.currently_updated_layer_index,
+            f"There should be no layer to update. "
+            f"Currently updated layer index: {self.model.currently_updated_layer_index}",
         )
 
         # selecting the first update
         layer_index = 0
         self.model.select_update(layer_index=layer_index)
+        self.check_update_selection(self.model, layer_index=layer_index)
 
     def test_apply_change(self):
         gather_statistics(self.dataloader, self.model, self.loss)
@@ -225,7 +237,6 @@ class TestGrowingContainer(unittest.TestCase):
         self.model.select_best_update()
         self.model.currently_updated_layer.scaling_factor = 1.0
         self.model.apply_change()
-
         self.assertIsNone(self.model.currently_updated_layer_index, "No layer to update")
 
     def test_number_of_parameters(self):
