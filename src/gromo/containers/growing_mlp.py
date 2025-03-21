@@ -217,6 +217,27 @@ class GrowingMLP(GrowingContainer):
         return self.layers[item]
 
 
+class Perceptron(GrowingMLP):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_feature: int,
+        out_features: int,
+        activation: nn.Module = nn.Sigmoid(),
+        use_bias: bool = True,
+        device: Optional[torch.device] = None,
+    ) -> None:
+        super().__init__(
+            in_features=in_features,
+            out_features=out_features,
+            hidden_size=hidden_feature,
+            number_hidden_layers=1,
+            activation=activation,
+            use_bias=use_bias,
+            device=device,
+        )
+
+
 if __name__ == "__main__":
     import torch
     import torch.nn as nn
