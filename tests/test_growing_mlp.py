@@ -27,6 +27,7 @@ class TestGrowingMLP(unittest.TestCase):
             out_features=self.out_features,
             hidden_size=self.hidden_size,
             number_hidden_layers=self.number_hidden_layers,
+            activation=nn.ReLU(),
         )
 
         # Create a loss
@@ -65,9 +66,12 @@ class TestGrowingMLP(unittest.TestCase):
         self.assertGreater(len(info), 0)
 
     def test_normalise(self):
+        y_pred_list = [self.model(x) for x, _ in self.dataloader]
+
         self.model.normalise()
-        for layer in self.model.layers:
-            self.assertTrue(torch.is_tensor(layer.weight))
+        y_pred_normalised_list = [self.model(x) for x, _ in self.dataloader]
+        for y_pred, y_pred_normalised in zip(y_pred_list, y_pred_normalised_list):
+            self.assertTrue(torch.allclose(y_pred, y_pred_normalised))
 
     def test_normalisation_factor(self):
         values = torch.tensor([1.0, 2.0, 3.0])

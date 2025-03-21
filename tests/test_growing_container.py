@@ -12,7 +12,7 @@ def create_synthetic_data(num_samples=20, input_dim=2, output_dim=1, batch_size=
     input_data = torch.randn(num_samples, input_dim)
     output_data = torch.randn(num_samples, output_dim)
     dataset = TensorDataset(input_data, output_data)
-    return DataLoader(dataset, batch_size=batch_size)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 
 def gather_statistics(dataloader, model, loss):
