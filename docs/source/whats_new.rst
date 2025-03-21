@@ -20,7 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
-- Adds a generic GrowingContainer to simplify model management along with unit testing. (:gh:`77` by `Stéphane Rivaud`_)
+- Adds a generic GrowingContainer to simplify model management along with unit testing. Propagates modifications to models. (:gh:`77` by `Stéphane Rivaud`_)
 - Refactor and simplify repo structure (:gh:`72` and :gh:`73` by `Stella Douka`_)
 - Simplify global device handling (:gh:`72` by `Stella Douka`_)
 - Integrate an MLP Mixer (:gh:`70` by `Stéphane Rivaud`_)

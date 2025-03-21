@@ -20,18 +20,20 @@ all_layer_types = {
 class GrowingResidualMLP(GrowingContainer):
     def __init__(
         self,
-        input_shape: torch.Size | tuple[int, ...],
+        in_features: torch.Size | tuple[int, ...],
+        out_features: int,
         num_features: int,
-        num_blocks: int,
         hidden_features: int,
-        num_classes: int,
+        num_blocks: int,
         activation: torch.nn.Module = torch.nn.ReLU(),
+        device: torch.device = None,
     ) -> None:
 
-        in_features = torch.tensor(input_shape).prod().int().item()
+        in_features = torch.tensor(in_features).prod().int().item()
         super(GrowingResidualMLP, self).__init__(
-            in_features=int(in_features),
-            out_features=num_classes,
+            in_features=torch.tensor(in_features).prod().int().item(),
+            out_features=out_features,
+            device=device,
         )
         self.num_features = num_features
         self.hidden_features = hidden_features
@@ -59,10 +61,10 @@ class GrowingResidualMLP(GrowingContainer):
 
         # final projection
         self.projection = nn.Linear(num_features, self.out_features, device=self.device)
+        self.set_growing_layers()
 
-        # current updated block
-        self.currently_updated_block: GrowingResidualBlock | None = None
-        self.currently_updated_block_index: int | None = None
+    def set_growing_layers(self):
+        self.growing_layers = nn.ModuleList(block.second_layer for block in self.blocks)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.embedding(x)
@@ -78,88 +80,21 @@ class GrowingResidualMLP(GrowingContainer):
         x = self.projection(x)
         return x
 
-    def init_computation(self):
-        for block in self.blocks:
-            block.init_computation()
-
-    def update_computation(self):
-        for block in self.blocks:
-            block.update_computation()
-
-    def reset_computation(self):
-        for block in self.blocks:
-            block.reset_computation()
-        self.currently_updated_block = None
-        self.currently_updated_block_index = None
-
-    def delete_update(self):
-        for block in self.blocks:
-            block.delete_update()
-        self.currently_updated_block = None
-        self.currently_updated_block_index = None
-
-    def compute_optimal_update(
-        self,
-        part: str = "all",
-        numerical_threshold: float = 1e-15,
-        statistical_threshold: float = 1e-3,
-        maximum_added_neurons: int | None = None,
-        dtype: torch.dtype = torch.float32,
-    ) -> None:
-        for block in self.blocks:
-            block.compute_optimal_update(
-                part=part,
-                numerical_threshold=numerical_threshold,
-                statistical_threshold=statistical_threshold,
-                maximum_added_neurons=maximum_added_neurons,
-                dtype=dtype,
-            )
-
-    def select_best_update(self, verbose: bool = False) -> int:
-        first_order_improvement_values = [
-            block.first_order_improvement for block in self.blocks
-        ]
-        max_improvement = max(first_order_improvement_values)
-        for i, block in enumerate(self.blocks):
+    def select_update(self, layer_index: int, verbose: bool = False) -> int:
+        for i, layer in enumerate(self.growing_layers):
             if verbose:
-                print(f"Block {i} improvement: {block.first_order_improvement}")
+                print(f"Block {i} improvement: {layer.first_order_improvement}")
                 print(
-                    f"Block {i} parameter improvement: {block.parameter_update_decrease}"
+                    f"Block {i} parameter improvement: {layer.parameter_update_decrease}"
                 )
-                print(f"Block {i} eigenvalues extension: {block.eigenvalues}")
-            if block.first_order_improvement < max_improvement:
+                print(f"Block {i} eigenvalues extension: {layer.eigenvalues}")
+            if i != layer_index:
                 if verbose:
                     print(f"Deleting block {i}")
-                block.delete_update()
+                layer.delete_update()
             else:
-                self.currently_updated_block = block
-                self.currently_updated_block_index = i
-        return self.currently_updated_block_index
-
-    def select_update(self, block_index: int, verbose: bool = False) -> int:
-        for i, block in enumerate(self.blocks):
-            if verbose:
-                print(f"Block {i} improvement: {block.first_order_improvement}")
-                print(
-                    f"Block {i} parameter improvement: {block.parameter_update_decrease}"
-                )
-                print(f"Block {i} eigenvalues extension: {block.eigenvalues}")
-            if i != block_index:
-                if verbose:
-                    print(f"Deleting block {i}")
-                block.delete_update()
-            else:
-                self.currently_updated_block = block
-                self.currently_updated_block_index = i
-        return self.currently_updated_block_index
-
-    @property
-    def first_order_improvement(self) -> torch.Tensor:
-        return self.currently_updated_block.first_order_improvement
-
-    def apply_change(self) -> None:
-        for block in self.blocks:
-            block.apply_change()
+                self.currently_updated_layer_index = i
+        return self.currently_updated_layer_index
 
     def number_of_parameters(self):
         num_param = sum(p.numel() for p in self.embedding.parameters())
@@ -201,8 +136,12 @@ class GrowingResidualMLP(GrowingContainer):
 
     def update_information(self):
         information = dict()
-        for i, block in enumerate(self.blocks):
-            information[i] = block.update_information()
+        for i, layer in enumerate(self.growing_layers):
+            layer_information = dict()
+            layer_information["update_value"] = layer.first_order_improvement
+            layer_information["parameter_improvement"] = layer.parameter_update_decrease
+            layer_information["eigenvalues_extension"] = layer.eigenvalues_extension
+            information[i] = layer_information
         return information
 
 
@@ -251,6 +190,8 @@ class GrowingResidualBlock(GrowingContainer):
             out_features=num_features,
         )
         self.name = name
+        self.num_features = num_features
+        self.hidden_features = hidden_features
 
         self.norm = nn.LayerNorm(
             num_features, elementwise_affine=False, device=self.device
@@ -277,45 +218,6 @@ class GrowingResidualBlock(GrowingContainer):
         # self.activation_derivative = torch.func.grad(mid_activation)(torch.tensor(1e-5))
         # TODO: FIX this
         self.activation_derivative = 1
-
-    def __setattr__(self, key, value):
-        if key in [
-            "scaling_factor",
-            "eigenvalues_extension",
-            "parameter_update_decrease",
-            "first_order_improvement",
-        ]:
-            self.second_layer.__setattr__(key, value)
-        else:
-            nn.Module.__setattr__(self, key, value)
-
-    @property
-    def hidden_features(self):
-        return self.second_layer.in_features
-
-    @property
-    def scaling_factor(self):
-        return self.second_layer.scaling_factor
-
-    @property
-    def eigenvalues_extension(self):
-        return self.second_layer.eigenvalues_extension
-
-    @property
-    def parameter_update_decrease(self):
-        return self.second_layer.parameter_update_decrease
-
-    @property
-    def first_order_improvement(self) -> torch.Tensor:
-        """
-        Get the first order improvement of the block.
-
-        Returns
-        -------
-        torch.Tensor
-            first order improvement
-        """
-        return self.second_layer.first_order_improvement
 
     def extended_forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -366,120 +268,6 @@ class GrowingResidualBlock(GrowingContainer):
             x = y + x
         return x
 
-    # @property
-    # def in_activity(self) -> torch.Tensor:
-    #     """
-    #     Get the input activity of the block.
-    #
-    #     Returns
-    #     -------
-    #     torch.Tensor
-    #         input activity
-    #     """
-    #     return self.first_layer.input
-    #
-    # def set_store_in_activity(self, value: bool):
-    #     """
-    #     Set the store_in_activity parameter of the block.
-    #     If True, the block will store the activity after the first activation
-    #     function.
-    #
-    #     Parameters
-    #     ----------
-    #     value: bool
-    #         value to set
-    #     """
-    #     self.first_layer.store_input = True
-
-    def init_computation(self):
-        """
-        Initialise the computation of the block.
-        """
-        self.first_layer.init_computation()
-        self.second_layer.init_computation()
-
-    def update_computation(self, desired_activation: torch.Tensor | None = None):
-        """
-        Update the computation of the block.
-
-        Parameters
-        ----------
-        desired_activation: torch.Tensor
-            desired direction of the output variation of the block
-        """
-        self.first_layer.update_computation()
-        self.second_layer.update_computation()
-
-    def reset_computation(self):
-        """
-        Reset the computation of the block.
-        """
-        self.first_layer.reset_computation()
-        self.second_layer.reset_computation()
-
-    def delete_update(self):
-        """
-        Delete the update of the block.
-        """
-        self.first_layer.delete_update()
-        self.second_layer.delete_update(include_previous=True)
-
-    def compute_optimal_update(
-        self,
-        part: str = "all",
-        numerical_threshold: float = 1e-15,
-        statistical_threshold: float = 1e-3,
-        maximum_added_neurons: int | None = None,
-        dtype: torch.dtype = torch.float32,
-    ) -> None:
-        """
-        Compute the optimal update for second layer and additional neurons.
-
-        Parameters
-        ----------
-        numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
-        maximum_added_neurons: int | None
-            maximum number of added neurons, if None all significant neurons are kept
-        """
-        assert part in [
-            "all",
-            "parameter",
-            "neuron",
-        ], f"{part=} should be in ['all', 'parameter', 'neuron']"
-
-        if part == "parameter":
-            _, _, _ = self.second_layer.compute_optimal_delta(dtype=dtype)
-            # _, _, _ = self.second_layer.compute_optimal_delta(dtype=dtype)
-        elif part == "neuron":
-            _, _ = self.second_layer.compute_optimal_updates(
-                zero_delta=True,
-                numerical_threshold=numerical_threshold,
-                statistical_threshold=statistical_threshold,
-                maximum_added_neurons=maximum_added_neurons,
-                dtype=dtype,
-            )
-            self.second_layer.optimal_delta_layer = None
-            self.second.layer.parameter_update_decrease = 0
-        elif part == "all":
-            _, _ = self.second_layer.compute_optimal_updates(
-                numerical_threshold=numerical_threshold,
-                statistical_threshold=statistical_threshold,
-                maximum_added_neurons=maximum_added_neurons,
-                update_previous=True,
-                dtype=dtype,
-            )
-
-    def apply_change(self) -> None:
-        """
-        Apply the optimal delta and extend the layer with current
-        optimal delta and layer extension with the current scaling factor.
-        """
-        self.second_layer.apply_change(apply_previous=True)
-        # self.hidden_features += self.eigenvalues_extension.shape[0]
-
     def sub_select_optimal_added_parameters(
         self,
         keep_neurons: int,
@@ -492,8 +280,8 @@ class GrowingResidualBlock(GrowingContainer):
         keep_neurons: int
             number of neurons to keep
         """
-        self.eigenvalues = self.eigenvalues[:keep_neurons]
-        self.second_layer.sub_select_optimal_added_parameters(
+        self.currently_updated_layer.eigenvalues = self.eigenvalues[:keep_neurons]
+        self.currently_updated_layer.second_layer.sub_select_optimal_added_parameters(
             keep_neurons, sub_select_previous=True
         )
 
@@ -517,22 +305,3 @@ class GrowingResidualBlock(GrowingContainer):
             "mean": mean_value,
             "std": std_value,
         }
-
-    def weights_statistics(self) -> dict[int, dict[str, dict[str, float] | int]]:
-        statistics = {}
-        for i, layer in enumerate([self.first_layer, self.second_layer]):
-            statistics[i] = {
-                "weight": self.tensor_statistics(layer.weight),
-            }
-            if layer.bias is not None:
-                statistics[i]["bias"] = self.tensor_statistics(layer.bias)
-            statistics[i]["input_shape"] = layer.num_features
-            statistics[i]["output_shape"] = layer.out_features
-        return statistics
-
-    def update_information(self):
-        layer_information = dict()
-        layer_information["update_value"] = self.first_order_improvement
-        layer_information["parameter_improvement"] = self.parameter_update_decrease
-        layer_information["eigenvalues_extension"] = self.eigenvalues_extension
-        return layer_information
