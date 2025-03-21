@@ -9,10 +9,10 @@ from gromo.containers.growing_mlp import Perceptron
 
 # Create synthetic data
 def create_synthetic_data(
-        num_samples=20,
-        in_features=(3, 32, 32),
-        out_features=(1,),
-        batch_size=1,
+    num_samples=20,
+    in_features=(3, 32, 32),
+    out_features=(1,),
+    batch_size=1,
 ):
     input_data = torch.randn(num_samples, *in_features)
     output_data = torch.randn(num_samples, *out_features)
