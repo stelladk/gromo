@@ -593,7 +593,7 @@ if __name__ == "__main__":
     model = GrowingMLPMixer(
         in_features=input_shape,
         out_features=num_classes,
-        patch_size=2,
+        patch_size=patch_size,
         num_features=num_features,
         hidden_dim_token=hidden_token_features,
         hidden_dim_channel=hidden_channel_features,
