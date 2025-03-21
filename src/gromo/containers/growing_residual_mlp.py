@@ -1,10 +1,12 @@
 """
 Module to define a two layer block similar to a BasicBlock in ResNet.
 """
+
+from typing import Any, Dict, Optional
+
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import Optional, Dict, Any
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
@@ -53,7 +55,9 @@ class GrowingResidualBlock(GrowingContainer):
         self.num_features = num_features
         self.hidden_features = hidden_features
 
-        self.norm = nn.LayerNorm(num_features, elementwise_affine=False, device=self.device)
+        self.norm = nn.LayerNorm(
+            num_features, elementwise_affine=False, device=self.device
+        )
         self.activation = activation if activation is not None else nn.Identity()
         self.first_layer = LinearGrowingModule(
             num_features,
@@ -96,7 +100,9 @@ class GrowingResidualBlock(GrowingContainer):
             y = self.activation(x)
             y, y_ext = self.first_layer.extended_forward(y)
             y, _ = self.second_layer.extended_forward(y, y_ext)
-            assert _ is None, f"The output of layer 2 {self.second_layer.name} should not be extended."
+            assert (
+                _ is None
+            ), f"The output of layer 2 {self.second_layer.name} should not be extended."
             del y_ext
             x = y + x
         return x

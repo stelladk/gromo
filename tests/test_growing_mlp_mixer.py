@@ -13,22 +13,24 @@ class TestGrowingResidualMLP(TestCase):
         self.x = torch.randn(2, *self.input_shape, device=global_device())
         self.num_classes = 10
         self.model = GrowingMLPMixer(
-            input_shape=self.input_shape,
+            in_features=self.input_shape,
+            out_features=self.num_classes,
+            patch_size=4,
             num_features=16,
             hidden_dim_token=8,
             hidden_dim_channel=8,
             num_blocks=2,
-            num_classes=self.num_classes,
         )
 
     def test_a_init(self):
         l1 = GrowingMLPMixer(
-            input_shape=self.input_shape,
+            in_features=self.input_shape,
+            out_features=self.num_classes,
+            patch_size=4,
             num_features=16,
             hidden_dim_token=8,
             hidden_dim_channel=8,
             num_blocks=2,
-            num_classes=self.num_classes,
         )
 
         self.assertIsInstance(l1, GrowingMLPMixer)

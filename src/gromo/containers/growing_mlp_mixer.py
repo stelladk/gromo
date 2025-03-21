@@ -1,8 +1,8 @@
+from typing import Any, Dict, Optional
+
 import torch
 import torch.nn as nn
-
 from torch import Tensor
-from typing import Optional, Dict, Any
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
@@ -20,12 +20,12 @@ class GrowingMLPBlock(GrowingContainer):
     """
 
     def __init__(
-            self,
-            num_features: int,
-            hidden_features: int = 0,
-            dropout: float = 0.0,
-            name: Optional[str] = None,
-            kwargs_layer: Optional[Dict[str, Any]] = None,
+        self,
+        num_features: int,
+        hidden_features: int = 0,
+        dropout: float = 0.0,
+        name: Optional[str] = None,
+        kwargs_layer: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Initialize the block.
@@ -90,7 +90,9 @@ class GrowingMLPBlock(GrowingContainer):
             y_ext = self.dropout(y_ext)
         y, _ = self.second_layer.extended_forward(y, y_ext)
 
-        assert _ is None, f"The output of layer 2 {self.second_layer.name} should not be extended."
+        assert (
+            _ is None
+        ), f"The output of layer 2 {self.second_layer.name} should not be extended."
         del y_ext
 
         y = self.dropout(y)
@@ -154,8 +156,11 @@ class GrowingMLPBlock(GrowingContainer):
             "parameter_improvement": self.second_layer.parameter_update_decrease,
             "eigenvalues_extension": self.second_layer.eigenvalues_extension,
             "scaling_factor": self.second_layer.scaling_factor,
-            "added_neurons": 0 if self.second_layer.eigenvalues_extension is None else self.second_layer.eigenvalues_extension.size(
-                0),
+            "added_neurons": (
+                0
+                if self.second_layer.eigenvalues_extension is None
+                else self.second_layer.eigenvalues_extension.size(0)
+            ),
         }
         return layer_information
 
@@ -166,12 +171,12 @@ class GrowingTokenMixer(GrowingContainer):
     """
 
     def __init__(
-            self,
-            num_patches: int,
-            num_features: int,
-            hidden_features: int,
-            dropout: float,
-            name: Optional[str] = None,
+        self,
+        num_patches: int,
+        num_features: int,
+        hidden_features: int,
+        dropout: float,
+        name: Optional[str] = None,
     ) -> None:
         """
         Initialize the token mixer.
@@ -242,7 +247,9 @@ class GrowingTokenMixer(GrowingContainer):
         return out
 
     def number_of_parameters(self) -> int:
-        return self.mlp.number_of_parameters() + sum(p.numel() for p in self.norm.parameters())
+        return self.mlp.number_of_parameters() + sum(
+            p.numel() for p in self.norm.parameters()
+        )
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         return self.mlp.weights_statistics()
@@ -257,11 +264,11 @@ class GrowingChannelMixer(GrowingContainer):
     """
 
     def __init__(
-            self,
-            num_features: int,
-            hidden_features: int,
-            dropout: float,
-            name: Optional[str] = None,
+        self,
+        num_features: int,
+        hidden_features: int,
+        dropout: float,
+        name: Optional[str] = None,
     ) -> None:
         """
         Initialize the channel mixer.
@@ -326,7 +333,9 @@ class GrowingChannelMixer(GrowingContainer):
         return out
 
     def number_of_parameters(self) -> int:
-        return self.mlp.number_of_parameters() + sum(p.numel() for p in self.norm.parameters())
+        return self.mlp.number_of_parameters() + sum(
+            p.numel() for p in self.norm.parameters()
+        )
 
     def weights_statistics(self) -> Dict[int, Dict[str, Any]]:
         return self.mlp.weights_statistics()
@@ -439,7 +448,7 @@ class GrowingMixerLayer(GrowingContainer):
 def check_sizes(image_size, patch_size):
     sqrt_num_patches, remainder = divmod(image_size, patch_size)
     assert remainder == 0, "`image_size` must be divisibe by `patch_size`"
-    num_patches = sqrt_num_patches ** 2
+    num_patches = sqrt_num_patches**2
     return num_patches
 
 
@@ -486,7 +495,10 @@ class GrowingMLPMixer(GrowingContainer):
         """
         in_channels, image_size, _ = in_features
         num_patches = check_sizes(image_size, patch_size)
-        super().__init__(in_features=torch.tensor(in_features).prod().int().item(), out_features=out_features)
+        super().__init__(
+            in_features=torch.tensor(in_features).prod().int().item(),
+            out_features=out_features,
+        )
         self.device = device
         self.patcher = nn.Conv2d(
             in_channels,

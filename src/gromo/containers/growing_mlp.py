@@ -1,6 +1,7 @@
+from typing import Any, Dict, Optional
+
 import torch
-from torch import nn, Tensor
-from typing import Optional, Dict, Any
+from torch import Tensor, nn
 
 from gromo.containers.growing_container import GrowingContainer
 from gromo.modules.linear_growing_module import LinearGrowingModule
@@ -41,7 +42,9 @@ class GrowingMLP(GrowingContainer):
         device : Optional[torch.device]
             Device to use for computation.
         """
-        super().__init__(in_features=in_features, out_features=out_features, device=device)
+        super().__init__(
+            in_features=in_features, out_features=out_features, device=device
+        )
 
         self.num_features = torch.tensor(self.in_features).prod().int().item()
 
@@ -208,7 +211,9 @@ class GrowingMLP(GrowingContainer):
         return self.__str__()
 
     def __getitem__(self, item: int) -> LinearGrowingModule:
-        assert 0 <= item < len(self.layers), f"{item=} should be in [0, {len(self.layers)})"
+        assert (
+            0 <= item < len(self.layers)
+        ), f"{item=} should be in [0, {len(self.layers)})"
         return self.layers[item]
 
 
