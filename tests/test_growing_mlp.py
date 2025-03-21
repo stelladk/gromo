@@ -2,7 +2,6 @@ import unittest
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 
 from gromo.containers.growing_mlp import GrowingMLP
 from tests.test_growing_container import create_synthetic_data, gather_statistics
@@ -16,7 +15,7 @@ class TestGrowingMLP(unittest.TestCase):
         self.num_samples = 20
         self.batch_size = 4
         self.dataloader = create_synthetic_data(
-            self.num_samples, self.in_features, self.out_features, self.batch_size
+            self.num_samples, (self.in_features,), (self.out_features,), self.batch_size
         )
 
         # Create a simple MLP model

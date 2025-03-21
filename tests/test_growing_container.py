@@ -8,9 +8,14 @@ from gromo.containers.growing_mlp import Perceptron
 
 
 # Create synthetic data
-def create_synthetic_data(num_samples=20, input_dim=2, output_dim=1, batch_size=1):
-    input_data = torch.randn(num_samples, input_dim)
-    output_data = torch.randn(num_samples, output_dim)
+def create_synthetic_data(
+        num_samples=20,
+        in_features=(3, 32, 32),
+        out_features=(1,),
+        batch_size=1,
+):
+    input_data = torch.randn(num_samples, *in_features)
+    output_data = torch.randn(num_samples, *out_features)
     dataset = TensorDataset(input_data, output_data)
     return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
@@ -37,7 +42,7 @@ class TestGrowingContainer(unittest.TestCase):
         self.num_samples = 20
         self.batch_size = 4
         self.dataloader = create_synthetic_data(
-            self.num_samples, self.in_features, self.out_features, self.batch_size
+            self.num_samples, (self.in_features,), (self.out_features,), self.batch_size
         )
 
         # Create a simple perceptron model
