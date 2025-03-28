@@ -32,6 +32,7 @@ class TestGrowingMLPMixer(unittest.TestCase):
             hidden_dim_token=self.hidden_dim_token,
             hidden_dim_channel=self.hidden_dim_channel,
             num_blocks=self.num_blocks,
+            device=torch.device("cpu"),
         )
 
         # Create a loss
@@ -66,7 +67,7 @@ class TestGrowingMLPMixer(unittest.TestCase):
 
     def test_set_growing_layers(self):
         self.model.set_growing_layers()
-        self.assertEqual(len(self.model.growing_layers), 2 * self.num_blocks)
+        self.assertEqual(len(self.model._growing_layers), 2 * self.num_blocks)
 
     def test_weights_statistics(self):
         stats = self.model.weights_statistics()

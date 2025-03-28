@@ -79,7 +79,7 @@ class GrowingResidualBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = nn.ModuleList([self.second_layer])
+        self._growing_layers = [self.second_layer]
 
     def extended_forward(self, x: Tensor) -> Tensor:
         """
@@ -212,7 +212,7 @@ class GrowingResidualMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self):
-        self.growing_layers = nn.ModuleList(block.second_layer for block in self.blocks)
+        self._growing_layers = list(block.second_layer for block in self.blocks)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.embedding(x)
@@ -229,7 +229,7 @@ class GrowingResidualMLP(GrowingContainer):
         return x
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
-        for i, layer in enumerate(self.growing_layers):
+        for i, layer in enumerate(self._growing_layers):
             if verbose:
                 print(f"Block {i} improvement: {layer.first_order_improvement}")
                 print(
@@ -276,7 +276,7 @@ class GrowingResidualMLP(GrowingContainer):
 
     def update_information(self):
         information = dict()
-        for i, layer in enumerate(self.growing_layers):
+        for i, layer in enumerate(self._growing_layers):
             layer_information = dict()
             layer_information["update_value"] = layer.first_order_improvement
             layer_information["parameter_improvement"] = layer.parameter_update_decrease

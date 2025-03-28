@@ -30,6 +30,7 @@ class TestGrowingResidualMLP(unittest.TestCase):
             hidden_features=self.hidden_features,
             num_blocks=self.num_blocks,
             activation=nn.ReLU(),
+            device=torch.device("cpu"),
         )
 
         # Create a loss
@@ -47,6 +48,7 @@ class TestGrowingResidualMLP(unittest.TestCase):
             hidden_features=self.hidden_features,
             num_blocks=self.num_blocks,
             activation=nn.ReLU(),
+            device=torch.device("cpu"),
         )
 
         self.assertIsInstance(l1, GrowingResidualMLP)
@@ -64,7 +66,7 @@ class TestGrowingResidualMLP(unittest.TestCase):
 
     def test_set_growing_layers(self):
         self.model.set_growing_layers()
-        self.assertEqual(len(self.model.growing_layers), self.num_blocks)
+        self.assertEqual(len(self.model._growing_layers), self.num_blocks)
 
     def test_tensor_statistics(self):
         tensor = torch.randn(10)

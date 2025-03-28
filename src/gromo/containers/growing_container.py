@@ -43,12 +43,12 @@ class GrowingContainer(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.growing_layers = torch.nn.ModuleList()
+        self._growing_layers = list()
         self.currently_updated_layer_index = None
 
     def set_growing_layers(self):
         """
-        Reference all growable layers of the model in the growing_layers attribute. This method should be implemented
+        Reference all growable layers of the model in the _growing_layers private attribute. This method should be implemented
         in the child class and called in the __init__ method.
         """
         raise NotImplementedError
@@ -63,42 +63,42 @@ class GrowingContainer(torch.nn.Module):
 
     def init_computation(self):
         """Initialize statistics computations for growth procedure"""
-        for layer in self.growing_layers:
+        for layer in self._growing_layers:
             if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
                 layer.init_computation()
 
     def update_computation(self):
         """Update statistics computations for growth procedure"""
-        for layer in self.growing_layers:
+        for layer in self._growing_layers:
             if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
                 layer.update_computation()
 
     def reset_computation(self):
         """Reset statistics computations for growth procedure"""
-        for layer in self.growing_layers:
+        for layer in self._growing_layers:
             if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
                 layer.reset_computation()
 
     def compute_optimal_updates(self, *args, **kwargs):
         """Compute optimal updates for growth procedure"""
-        for layer in self.growing_layers:
+        for layer in self._growing_layers:
             if isinstance(layer, (GrowingModule, AdditionGrowingModule)):
                 layer.compute_optimal_updates(*args, **kwargs)
 
     def select_best_update(self):
         """Select the best update for growth procedure"""
         first_order_improvements = [
-            layer.first_order_improvement for layer in self.growing_layers
+            layer.first_order_improvement for layer in self._growing_layers
         ]
         best_layer_idx = torch.argmax(torch.stack(first_order_improvements))
         self.currently_updated_layer_index = best_layer_idx
 
-        for idx, layer in enumerate(self.growing_layers):
+        for idx, layer in enumerate(self._growing_layers):
             if idx != best_layer_idx:
                 layer.delete_update()
 
     def select_update(self, layer_index: int, verbose: bool = False) -> int:
-        for i, layer in enumerate(self.growing_layers):
+        for i, layer in enumerate(self._growing_layers):
             if verbose:
                 print(f"Layer {i} update: {layer.first_order_improvement}")
                 print(
@@ -117,7 +117,7 @@ class GrowingContainer(torch.nn.Module):
     def currently_updated_layer(self):
         """Get the currently updated layer"""
         assert self.currently_updated_layer_index is not None, "No layer to update"
-        return self.growing_layers[self.currently_updated_layer_index]
+        return self._growing_layers[self.currently_updated_layer_index]
 
     def apply_change(self):
         """Apply changes to the model"""

@@ -84,7 +84,7 @@ class GrowingMLP(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = self.layers[1:]
+        self._growing_layers = list(self.layers[1:])
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -152,7 +152,7 @@ class GrowingMLP(GrowingContainer):
 
     def update_information(self) -> Dict[str, Any]:
         information = {}
-        for i, layer in enumerate(self.growing_layers):
+        for i, layer in enumerate(self._growing_layers):
             layer_information = {
                 "update_value": layer.first_order_improvement,
                 "parameter_improvement": layer.parameter_update_decrease,

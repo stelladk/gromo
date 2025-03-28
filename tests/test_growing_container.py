@@ -51,12 +51,13 @@ class TestGrowingContainer(unittest.TestCase):
             in_features=self.in_features,
             out_features=self.out_features,
             hidden_feature=self.hidden_features,
+            device=torch.device("cpu"),
         )
         self.loss = nn.MSELoss()
 
     def test_init_computation(self):
         self.model.init_computation()
-        for layer in self.model.growing_layers:
+        for layer in self.model._growing_layers:
             # store input
             self.assertTrue(
                 layer.store_input,
@@ -85,7 +86,7 @@ class TestGrowingContainer(unittest.TestCase):
             loss.backward()
             self.model.update_computation()
 
-            for layer in self.model.growing_layers:
+            for layer in self.model._growing_layers:
                 # check number of samples in the tensor statistics
                 for tensor_name in ["tensor_s", "tensor_m"]:
                     self.assertEqual(
@@ -108,7 +109,7 @@ class TestGrowingContainer(unittest.TestCase):
     def test_reset_computation(self):
         self.model.reset_computation()
 
-        for layer in self.model.growing_layers:
+        for layer in self.model._growing_layers:
             # store input
             self.assertFalse(
                 layer.store_input,
@@ -138,7 +139,7 @@ class TestGrowingContainer(unittest.TestCase):
         gather_statistics(self.dataloader, self.model, self.loss)
         self.model.compute_optimal_updates()
 
-        for layer in self.model.growing_layers:
+        for layer in self.model._growing_layers:
             # Check if the optimal updates are computed
             self.assertTrue(
                 hasattr(layer, "optimal_delta_layer"),
@@ -206,7 +207,7 @@ class TestGrowingContainer(unittest.TestCase):
             )
 
         # Check if the optimal updates are computed
-        for i, layer in enumerate(model.growing_layers):
+        for i, layer in enumerate(model._growing_layers):
             if i != model.currently_updated_layer_index:
                 self.check_has_no_update(layer)
             else:

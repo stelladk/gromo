@@ -101,12 +101,26 @@ class GrowingNetwork(GrowingContainer):
         self.l5.next_module = self.end_module
         self.end_module.set_previous_modules([self.l3, self.l5])
 
+        self.set_growing_layers()
+
+    def set_growing_layers(self):
+        self._growing_layers = [
+            self.start_module,
+            self.l1,
+            self.l2,
+            self.res_module,
+            self.l3,
+            self.l4,
+            self.l5,
+            self.end_module,
+        ]
+
     def __str__(self, verbose=0):
         if verbose == 0:
             return super(GrowingNetwork, self).__str__()
         else:
             txt = [f"{self.__class__.__name__}:"]
-            for layer in self.children():
+            for layer in self._growing_layers:
                 txt.append(layer.__str__(verbose=verbose))
             return "\n".join(txt)
 
@@ -121,7 +135,7 @@ class GrowingNetwork(GrowingContainer):
         return self.end_module(x + x1)
 
     def start_computing_s_m(self):
-        for layer in self.children():
+        for layer in self._growing_layers:
             layer.tensor_s.init()
             if isinstance(layer, LinearGrowingModule):
                 layer.tensor_m.init()
@@ -129,7 +143,7 @@ class GrowingNetwork(GrowingContainer):
                 layer.store_pre_activity = True
 
     def update_s_m(self):
-        for layer in self.children():
+        for layer in self._growing_layers:
             if isinstance(layer, LinearGrowingModule):
                 layer.tensor_m.update()
                 layer.tensor_s.update()
@@ -144,7 +158,7 @@ class GrowingNetwork(GrowingContainer):
         self.update_s_m()
 
     def stop_computing_s_m(self):
-        for layer in self.children():
+        for layer in self._growing_layers:
             layer.tensor_s.reset()
             if isinstance(layer, LinearGrowingModule):
                 layer.tensor_m.reset()

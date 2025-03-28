@@ -68,7 +68,7 @@ class GrowingMLPBlock(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = nn.ModuleList([self.second_layer])
+        self._growing_layers = [self.second_layer]
 
     def extended_forward(self, x: Tensor) -> Tensor:
         """
@@ -195,7 +195,7 @@ class GrowingTokenMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = self.mlp.growing_layers
+        self._growing_layers = self.mlp._growing_layers
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -280,7 +280,7 @@ class GrowingChannelMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = self.mlp.growing_layers
+        self._growing_layers = self.mlp._growing_layers
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -371,9 +371,9 @@ class GrowingMixerLayer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = nn.ModuleList()
-        self.growing_layers.extend(self.token_mixer.growing_layers)
-        self.growing_layers.extend(self.channel_mixer.growing_layers)
+        self._growing_layers = list()
+        self._growing_layers.extend(self.token_mixer._growing_layers)
+        self._growing_layers.extend(self.channel_mixer._growing_layers)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -503,10 +503,10 @@ class GrowingMLPMixer(GrowingContainer):
         self.set_growing_layers()
 
     def set_growing_layers(self) -> None:
-        self.growing_layers = nn.ModuleList()
+        self._growing_layers = list()
         for mixer in self.mixers:
-            self.growing_layers.append(mixer.token_mixer.mlp.second_layer)
-            self.growing_layers.append(mixer.channel_mixer.mlp.second_layer)
+            self._growing_layers.append(mixer.token_mixer.mlp.second_layer)
+            self._growing_layers.append(mixer.channel_mixer.mlp.second_layer)
 
     def forward(self, x: Tensor) -> Tensor:
         """
