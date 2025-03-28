@@ -159,8 +159,6 @@ class GrowingNetwork(GrowingContainer):
 
 
 if __name__ == "__main__":
-    from torchinfo import summary
-
     device = global_device()
     net = GrowingNetwork(5, 1, device=device)
     x_input = torch.randn(20, 5, device=device)
@@ -170,7 +168,8 @@ if __name__ == "__main__":
     print(net)
     print(net.l1.layer.weight.device)
 
-    summary(net, input_size=(1, 5), device=device)
+    # from torchinfo import summary
+    # summary(net, input_size=(1, 5), device=device)
 
     print(net.l1.layer.weight.device)
 
