@@ -42,6 +42,7 @@ Bugs
 ~~~~
 
 - Fix the computation of optimal added neurons without natural gradient step (:gh:`74` by `Stéphane Rivaud`_)
+- Fix the data type management for growth related computations. (:gh:`79` by `Stéphane Rivaud`_)
 - Revert global state changes, solve test issues (:gh:`70` by `Stella Douka`_)
 - Fix the data augmentation bug in get_dataset (:gh:`58` by `Stéphane Rivaud`_)
 - Use a different scaling factor for input and output extensions. In addition, ``apply_change`` and ``extended_forward`` have now compatible behavior in terms of scaling factor. (:gh:`48` by `Théo Rudkiewicz`_)
