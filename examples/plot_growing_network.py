@@ -1,3 +1,19 @@
+"""
+================================
+Simple Growing Container Example
+================================
+
+This example shows how to instantiate a model with growing layers.
+"""
+
+# Authors: Theo Rudkiewicz <theo.rudkiewicz@inria.fr>
+#          Sylvain Chevallier <sylvain.chevallier@universite-paris-saclay.fr>
+
+###############################################################################
+# Setup
+# -----
+# Importing the modules
+
 import torch
 
 from gromo.containers.growing_container import GrowingContainer
@@ -6,6 +22,10 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
 )
 from gromo.utils.utils import global_device
+
+
+###############################################################################
+# Define your model
 
 
 class GrowingNetwork(GrowingContainer):
