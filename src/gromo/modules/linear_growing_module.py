@@ -433,11 +433,12 @@ class LinearGrowingModule(GrowingModule):
         assert (
             self.input is not None
         ), f"The input must be stored to compute the update of S. (error in {self.name})"
+        input_extended = self.input_extended
         return (
             torch.einsum(
                 "ij,ik->jk",
-                torch.flatten(self.input_extended, 0, -2),
-                torch.flatten(self.input_extended, 0, -2),
+                torch.flatten(input_extended, 0, -2),
+                torch.flatten(input_extended, 0, -2),
             ),
             torch.tensor(self.input.shape[:-1]).prod().int().item(),
         )

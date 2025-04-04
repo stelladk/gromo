@@ -243,11 +243,12 @@ class Conv2dGrowingModule(GrowingModule):
         assert (
             self.input is not None
         ), f"The input must be stored to compute the update of S. (error in {self.name})"
+        unfolded_extended_input = self.unfolded_extended_input
         return (
             torch.einsum(
                 "iam, ibm -> ab",
-                self.unfolded_extended_input,
-                self.unfolded_extended_input,
+                unfolded_extended_input,
+                unfolded_extended_input,
             ),
             self.input.shape[0],
         )
@@ -385,13 +386,14 @@ class Conv2dGrowingModule(GrowingModule):
         int
             number of samples used to compute the update
         """
+        masked_unfolded_prev_input = self.masked_unfolded_prev_input
         return (
             torch.einsum(
                 "ijea, ijeb -> ab",
-                self.masked_unfolded_prev_input,
-                self.masked_unfolded_prev_input,
+                masked_unfolded_prev_input,
+                masked_unfolded_prev_input,
             ),
-            self.masked_unfolded_prev_input.shape[0],
+            masked_unfolded_prev_input.shape[0],
         )
 
     @property
