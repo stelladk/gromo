@@ -639,80 +639,76 @@ class TestLinearGrowingModule(TorchTestCase):
         # simple test update without natural gradient
         layer_out.compute_optimal_updates(zero_delta=True)
 
-    def test_compute_optimal_added_parameters(self):
-        for bias in (True, False):
-            with self.subTest(bias=bias):
-                demo_layers = self.demo_layers[bias]
-                demo_layers[0].store_input = True
-                demo_layers[1].init_computation()
-                demo_layers[1].tensor_s_growth.init()
+    @unittest_parametrize(({"bias": True, "dtype": torch.float64}, {"bias": False}))
+    def test_compute_optimal_added_parameters(
+        self, bias: bool, dtype: torch.dtype = torch.float32
+    ):
+        demo_layers = self.demo_layers[bias]
+        demo_layers[0].store_input = True
+        demo_layers[1].init_computation()
+        demo_layers[1].tensor_s_growth.init()
 
-                y = demo_layers[0](self.input_x)
-                y = demo_layers[1](y)
-                loss = torch.norm(y)
-                loss.backward()
+        y = demo_layers[0](self.input_x)
+        y = demo_layers[1](y)
+        loss = torch.norm(y)
+        loss.backward()
 
-                demo_layers[1].update_computation()
-                demo_layers[1].tensor_s_growth.update()
+        demo_layers[1].update_computation()
+        demo_layers[1].tensor_s_growth.update()
 
-                demo_layers[1].compute_optimal_delta()
-                alpha, alpha_b, omega, eigenvalues = demo_layers[
-                    1
-                ].compute_optimal_added_parameters()
+        demo_layers[1].compute_optimal_delta()
+        alpha, alpha_b, omega, eigenvalues = demo_layers[
+            1
+        ].compute_optimal_added_parameters(dtype=dtype)
 
-                self.assertShapeEqual(
-                    alpha,
-                    (-1, demo_layers[0].in_features),
-                )
-                k = alpha.size(0)
-                if bias:
-                    self.assertShapeEqual(alpha_b, (k,))
-                else:
-                    self.assertIsNone(alpha_b)
+        self.assertShapeEqual(
+            alpha,
+            (-1, demo_layers[0].in_features),
+        )
+        k = alpha.size(0)
+        if bias:
+            self.assertShapeEqual(alpha_b, (k,))
+        else:
+            self.assertIsNone(alpha_b)
 
-                self.assertShapeEqual(
-                    omega,
-                    (
-                        demo_layers[1].out_features,
-                        k,
-                    ),
-                )
+        self.assertShapeEqual(
+            omega,
+            (
+                demo_layers[1].out_features,
+                k,
+            ),
+        )
 
-                self.assertShapeEqual(eigenvalues, (k,))
+        self.assertShapeEqual(eigenvalues, (k,))
 
-                self.assertIsInstance(
-                    demo_layers[0].extended_output_layer, torch.nn.Linear
-                )
-                self.assertIsInstance(
-                    demo_layers[1].extended_input_layer, torch.nn.Linear
-                )
+        self.assertIsInstance(demo_layers[0].extended_output_layer, torch.nn.Linear)
+        self.assertIsInstance(demo_layers[1].extended_input_layer, torch.nn.Linear)
 
-                # those tests are not working yet
-                demo_layers[1].sub_select_optimal_added_parameters(2)
-                self.assertEqual(demo_layers[1].eigenvalues_extension.shape[0], 2)
-                self.assertEqual(demo_layers[1].extended_input_layer.in_features, 2)
-                self.assertEqual(demo_layers[0].extended_output_layer.out_features, 2)
+        # those tests are not working yet
+        demo_layers[1].sub_select_optimal_added_parameters(2)
+        self.assertEqual(demo_layers[1].eigenvalues_extension.shape[0], 2)
+        self.assertEqual(demo_layers[1].extended_input_layer.in_features, 2)
+        self.assertEqual(demo_layers[0].extended_output_layer.out_features, 2)
 
-    def test_tensor_s_growth(self):
-        for bias in (True, False):
-            with self.subTest(bias=bias):
-                demo_layers = self.demo_layers[bias]
-                demo_layers[0].store_input = True
-                demo_layers[1].tensor_s_growth.init()
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_tensor_s_growth(self, bias):
+        demo_layers = self.demo_layers[bias]
+        demo_layers[0].store_input = True
+        demo_layers[1].tensor_s_growth.init()
 
-                y = demo_layers[0](self.input_x)
-                y = demo_layers[1](y)
-                loss = torch.norm(y)
-                loss.backward()
+        y = demo_layers[0](self.input_x)
+        y = demo_layers[1](y)
+        loss = torch.norm(y)
+        loss.backward()
 
-                demo_layers[1].tensor_s_growth.update()
+        demo_layers[1].tensor_s_growth.update()
 
-                self.assertEqual(
-                    demo_layers[1].tensor_s_growth.samples,
-                    self.input_x.size(0),
-                )
-                s = demo_layers[0].in_features + demo_layers[0].use_bias
-                self.assertShapeEqual(demo_layers[1].tensor_s_growth(), (s, s))
+        self.assertEqual(
+            demo_layers[1].tensor_s_growth.samples,
+            self.input_x.size(0),
+        )
+        s = demo_layers[0].in_features + demo_layers[0].use_bias
+        self.assertShapeEqual(demo_layers[1].tensor_s_growth(), (s, s))
 
     def test_tensor_s_growth_errors(self):
         with self.assertRaises(AttributeError):
