@@ -88,22 +88,22 @@ class TestLinearGrowingModule(TorchTestCase):
         self.input_x = torch.randn((11, 5), device=global_device())
         self.demo_layers = dict()
         for bias in (True, False):
-            self.demo_layer_1 = LinearGrowingModule(
+            demo_layer_1 = LinearGrowingModule(
                 5,
                 3,
                 use_bias=bias,
                 name=f"L1({'bias' if bias else 'no_bias'})",
                 device=global_device(),
             )
-            self.demo_layer_2 = LinearGrowingModule(
+            demo_layer_2 = LinearGrowingModule(
                 3,
                 7,
                 use_bias=bias,
                 name=f"L2({'bias' if bias else 'no_bias'})",
-                previous_module=self.demo_layer_1,
+                previous_module=demo_layer_1,
                 device=global_device(),
             )
-            self.demo_layers[bias] = (self.demo_layer_1, self.demo_layer_2)
+            self.demo_layers[bias] = (demo_layer_1, demo_layer_2)
 
     def test_compute_s(self):
         x1, x2, is_th_1, is_th_2, os_th_1, os_th_2 = theoretical_s_1(self.n, self.c)
@@ -169,7 +169,16 @@ class TestLinearGrowingModule(TorchTestCase):
             is_th_2.float().to(global_device()) / (2 * self.n),
         )
 
-    def test_compute_delta(self):
+    @unittest_parametrize(
+        (
+            {"force_pseudo_inverse": True},
+            {"force_pseudo_inverse": False},
+            {"update_layer": False},
+        )
+    )
+    def test_compute_delta(
+        self, force_pseudo_inverse: bool = False, update_layer: bool = True
+    ):
         for reduction in {"mixed"}:  # { "mean", "sum"} do not work
             # mean: batch is divided by the number of samples in the batch
             # and the total is divided by the number of batches
@@ -224,12 +233,25 @@ class TestLinearGrowingModule(TorchTestCase):
                 )
 
                 # dW*
-                w, _, fo = layer.compute_optimal_delta()
+                w, _, fo = layer.compute_optimal_delta(
+                    force_pseudo_inverse=force_pseudo_inverse, update=update_layer
+                )
                 self.assertAllClose(
                     w,
                     -2 * torch.eye(self.c, device=global_device()) / batch_red,
                     message=f"Error in dW* for {reduction=}, {alpha=}",
                 )
+
+                if update_layer:
+                    self.assertAllClose(
+                        layer.optimal_delta_layer.weight,
+                        w,
+                        message=f"Error in the update of the delta layer for {reduction=}, {alpha=}",
+                    )
+                else:
+                    self.assertIsNone(
+                        layer.optimal_delta_layer,
+                    )
 
                 factors = {
                     "mixed": 1,
@@ -716,6 +738,20 @@ class TestLinearGrowingModule(TorchTestCase):
 
         with self.assertRaises(ValueError):
             _ = self.demo_layers[True][0].tensor_s_growth
+
+    def test_input(self, bias: bool = True):
+        self.demo_layers[bias][0].store_input = False
+        self.demo_layers[bias][0](self.input_x)
+
+        with self.assertRaises(ValueError):
+            _ = self.demo_layers[bias][0].input
+
+        self.demo_layers[bias][0].store_input = True
+        self.demo_layers[bias][0](self.input_x)
+        self.assertAllClose(
+            self.demo_layers[bias][0].input,
+            self.input_x,
+        )
 
 
 class TestLinearMergeGrowingModule(TorchTestCase):
