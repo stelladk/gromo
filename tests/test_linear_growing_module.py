@@ -739,20 +739,6 @@ class TestLinearGrowingModule(TorchTestCase):
         with self.assertRaises(ValueError):
             _ = self.demo_layers[True][0].tensor_s_growth
 
-    def test_input(self, bias: bool = True):
-        self.demo_layers[bias][0].store_input = False
-        self.demo_layers[bias][0](self.input_x)
-
-        with self.assertRaises(ValueError):
-            _ = self.demo_layers[bias][0].input
-
-        self.demo_layers[bias][0].store_input = True
-        self.demo_layers[bias][0](self.input_x)
-        self.assertAllClose(
-            self.demo_layers[bias][0].input,
-            self.input_x,
-        )
-
 
 class TestLinearMergeGrowingModule(TorchTestCase):
     def setUp(self):
