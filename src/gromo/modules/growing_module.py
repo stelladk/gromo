@@ -10,24 +10,24 @@ from gromo.utils.tools import compute_optimal_added_parameters
 from gromo.utils.utils import get_correct_device
 
 
-class AdditionGrowingModule(torch.nn.Module):
+class MergeGrowingModule(torch.nn.Module):
     """
-    Module to connect multiple modules with an addition operation.
-    This module does not perform the addition operation, it is done by the user.
+    Module to connect multiple modules with an merge operation.
+    This module does not perform the merge operation, it is done by the user.
     """
 
     def __init__(
         self,
-        post_addition_function: torch.nn.Module = torch.nn.Identity(),
-        previous_modules: list["AdditionGrowingModule | GrowingModule"] = None,
-        next_modules: list["AdditionGrowingModule | GrowingModule"] = None,
+        post_merge_function: torch.nn.Module = torch.nn.Identity(),
+        previous_modules: list["MergeGrowingModule | GrowingModule"] = None,
+        next_modules: list["MergeGrowingModule | GrowingModule"] = None,
         allow_growing: bool = False,
         tensor_s_shape: tuple[int, int] = None,
         device: torch.device | None = None,
         name: str = None,
     ) -> None:
 
-        super(AdditionGrowingModule, self).__init__()
+        super(MergeGrowingModule, self).__init__()
         self._name = name
         self.name = (
             self.__class__.__name__
@@ -37,9 +37,9 @@ class AdditionGrowingModule(torch.nn.Module):
         self._config_data, _ = load_config()
         self.device = get_correct_device(self, device)
 
-        self.post_addition_function: torch.nn.Module = post_addition_function
-        if self.post_addition_function:
-            self.post_addition_function = self.post_addition_function.to(self.device)
+        self.post_merge_function: torch.nn.Module = post_merge_function
+        if self.post_merge_function:
+            self.post_merge_function = self.post_merge_function.to(self.device)
         self._allow_growing = allow_growing
 
         self.store_input = 0
@@ -58,9 +58,9 @@ class AdditionGrowingModule(torch.nn.Module):
         self.previous_tensor_s: TensorStatistic | None = None
         self.previous_tensor_m: TensorStatistic | None = None
 
-        self.previous_modules: list[AdditionGrowingModule | GrowingModule] = []
+        self.previous_modules: list[MergeGrowingModule | GrowingModule] = []
         self.set_previous_modules(previous_modules)
-        self.next_modules: list[AdditionGrowingModule | GrowingModule] = []
+        self.next_modules: list[MergeGrowingModule | GrowingModule] = []
         self.set_next_modules(next_modules)
 
     @property
@@ -79,7 +79,7 @@ class AdditionGrowingModule(torch.nn.Module):
         self.set_next_modules(self.next_modules)
         self.set_previous_modules(self.previous_modules)
 
-    def add_next_module(self, module: "AdditionGrowingModule | GrowingModule") -> None:
+    def add_next_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
         """
         Add a module to the next modules of the current module.
 
@@ -93,9 +93,7 @@ class AdditionGrowingModule(torch.nn.Module):
             self.next_modules
         )  # TODO: maybe it is possible to avoid this
 
-    def add_previous_module(
-        self, module: "AdditionGrowingModule | GrowingModule"
-    ) -> None:
+    def add_previous_module(self, module: "MergeGrowingModule | GrowingModule") -> None:
         """
         Add a module to the previous modules of the current module.
 
@@ -108,7 +106,7 @@ class AdditionGrowingModule(torch.nn.Module):
         self.set_previous_modules(self.previous_modules)
 
     def set_next_modules(
-        self, next_modules: list["AdditionGrowingModule | GrowingModule"]
+        self, next_modules: list["MergeGrowingModule | GrowingModule"]
     ) -> None:
         """
         Set the next modules of the current module.
@@ -121,7 +119,7 @@ class AdditionGrowingModule(torch.nn.Module):
         raise NotImplementedError
 
     def set_previous_modules(
-        self, previous_modules: list["AdditionGrowingModule | GrowingModule"]
+        self, previous_modules: list["MergeGrowingModule | GrowingModule"]
     ) -> None:
         """
         Set the previous modules of the current module.
@@ -150,7 +148,7 @@ class AdditionGrowingModule(torch.nn.Module):
                 f"{self.__class__.__name__} module.",
                 f"\tPrevious modules : {self.previous_modules}",
                 f"\tNext modules : {self.next_modules}",
-                f"\tPost addition function : {self.post_addition_function}",
+                f"\tPost merge function : {self.post_merge_function}",
                 f"\tAllow growing : {self._allow_growing}",
                 f"\tStore input : {self.store_input}",
                 f"\tStore activity : {self.store_activity}",
@@ -174,8 +172,8 @@ class AdditionGrowingModule(torch.nn.Module):
             self.input = x
             self.input.retain_grad()
 
-        if self.post_addition_function and (x is not None):
-            y = self.post_addition_function(x)
+        if self.post_merge_function and (x is not None):
+            y = self.post_merge_function(x)
         else:
             y = x
 
@@ -452,10 +450,10 @@ class GrowingModule(torch.nn.Module):
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
-            previous_module, (GrowingModule, AdditionGrowingModule)
+            previous_module, (GrowingModule, MergeGrowingModule)
         ), (
             f"to grow previous_module must be an instance of GrowingModule"
-            f"or AdditionGrowingModule, but got {type(previous_module)}"
+            f"or MergeGrowingModule, but got {type(previous_module)}"
         )
 
         self.next_module: torch.nn.Module | None = next_module
@@ -616,8 +614,8 @@ class GrowingModule(torch.nn.Module):
     def __setattr__(self, key, value):
         if key == "store_input" and value is not self.store_input:
             self.__dict__["store_input"] = value
-            if isinstance(self.previous_module, AdditionGrowingModule):
-                # As a AdditionGrowingModule may have multiple next modules
+            if isinstance(self.previous_module, MergeGrowingModule):
+                # As a MergeGrowingModule may have multiple next modules
                 # we need to keep track of the number of modules that require the activity
                 # to be stored. Hence we store it as long as one of the module requires it.
                 self.previous_module.store_activity += 1 if value else -1
@@ -625,7 +623,7 @@ class GrowingModule(torch.nn.Module):
                 self._internal_store_input = value
         elif key == "store_pre_activity" and value is not self.store_pre_activity:
             self.__dict__["store_pre_activity"] = value
-            if isinstance(self.next_module, AdditionGrowingModule):
+            if isinstance(self.next_module, MergeGrowingModule):
                 self.next_module.store_input += 1 if value else -1
             else:
                 self._internal_store_pre_activity = value
@@ -647,12 +645,12 @@ class GrowingModule(torch.nn.Module):
                 self.previous_module._scaling_factor_next_module.data[0] = (
                     self.scaling_factor.item()
                 )
-            elif isinstance(self.previous_module, AdditionGrowingModule):
+            elif isinstance(self.previous_module, MergeGrowingModule):
                 # self.previous_module.update_scaling_factor(self.scaling_factor)
                 pass
             else:
                 raise TypeError(
-                    f"Previous module must be a GrowingModule or AdditionGrowingModule, got {type(self.previous_module)}"
+                    f"Previous module must be a GrowingModule or MergeGrowingModule, got {type(self.previous_module)}"
                 )
         elif key == "weight":
             self.layer.weight = value
@@ -848,14 +846,14 @@ class GrowingModule(torch.nn.Module):
     def tensor_s(self) -> TensorStatistic:
         """
         Return the tensor S of the layer.
-        Either the tensor S computed locally or the tensor S of the previous addition layer.
+        Either the tensor S computed locally or the tensor S of the previous merge layer.
 
         Returns
         -------
         TensorStatistic
             tensor S
         """
-        if isinstance(self.previous_module, AdditionGrowingModule):
+        if isinstance(self.previous_module, MergeGrowingModule):
             return self.previous_module.tensor_s
         else:
             return self._tensor_s
@@ -1151,15 +1149,15 @@ class GrowingModule(torch.nn.Module):
                     self.previous_module._apply_output_changes(
                         scaling_factor=self.scaling_factor
                     )
-                elif isinstance(self.previous_module, AdditionGrowingModule):
+                elif isinstance(self.previous_module, MergeGrowingModule):
                     raise NotImplementedError  # TODO
                 else:
                     raise NotImplementedError
 
             # Update the size of the previous and next modules
-            if isinstance(self.previous_module, AdditionGrowingModule):
+            if isinstance(self.previous_module, MergeGrowingModule):
                 self.previous_module.update_size()
-            if isinstance(self.next_module, AdditionGrowingModule):
+            if isinstance(self.next_module, MergeGrowingModule):
                 self.next_module.update_size()
 
     # Optimal update computation
@@ -1417,7 +1415,7 @@ class GrowingModule(torch.nn.Module):
                 dtype=dtype,
             )
             return alpha_weight, alpha_bias
-        elif isinstance(self.previous_module, AdditionGrowingModule):
+        elif isinstance(self.previous_module, MergeGrowingModule):
             raise NotImplementedError  # TODO
         else:
             raise NotImplementedError
@@ -1437,7 +1435,7 @@ class GrowingModule(torch.nn.Module):
             self.tensor_m_prev.init()
             self.cross_covariance.init()
             self.tensor_s_growth.init()
-        elif isinstance(self.previous_module, AdditionGrowingModule):
+        elif isinstance(self.previous_module, MergeGrowingModule):
             raise NotImplementedError  # TODO
         else:
             raise NotImplementedError
@@ -1454,7 +1452,7 @@ class GrowingModule(torch.nn.Module):
             self.tensor_m_prev.update()
             self.cross_covariance.update()
             self.tensor_s_growth.update()
-        elif isinstance(self.previous_module, AdditionGrowingModule):
+        elif isinstance(self.previous_module, MergeGrowingModule):
             raise NotImplementedError  # TODO
         else:
             raise NotImplementedError
@@ -1516,7 +1514,7 @@ class GrowingModule(torch.nn.Module):
                 if include_previous:
                     if isinstance(self.previous_module, GrowingModule):
                         self.previous_module.extended_output_layer = None
-                    elif isinstance(self.previous_module, AdditionGrowingModule):
+                    elif isinstance(self.previous_module, MergeGrowingModule):
                         raise NotImplementedError  # TODO
                         # two options for future implementation:
                         # 1. Do nothing(ie replace raise NotImplementedError by return or
@@ -1530,7 +1528,7 @@ class GrowingModule(torch.nn.Module):
                         raise TypeError(
                             f"Unexpected type for previous_module of {self.name}"
                             f"got {type(self.previous_module)} instead of GrowingModule "
-                            f"or AdditionGrowingModule."
+                            f"or MergeGrowingModule."
                         )
                 # risky behavior
                 else:  # include_previous is False
@@ -1545,17 +1543,17 @@ class GrowingModule(torch.nn.Module):
                                 UserWarning,
                             )
                         # otherwise it is ok as user already deleted the extended_output_layer
-                    elif isinstance(self.previous_module, AdditionGrowingModule):
+                    elif isinstance(self.previous_module, MergeGrowingModule):
                         return
                         # the user intentionally decided to take care of deletion of the
                         # other extensions we do not raise a warning (in contrast with the
                         # GrowingModule case) as  this is way more likely to happen
-                        # with AdditionGrowingModule
+                        # with MergeGrowingModule
                     else:
                         raise TypeError(
                             f"Unexpected type for previous_module of {self.name}"
                             f"got {type(self.previous_module)} instead of GrowingModule "
-                            f"or AdditionGrowingModule."
+                            f"or MergeGrowingModule."
                         )
             # incorrect behavior
             else:  # self.previous_module is None
