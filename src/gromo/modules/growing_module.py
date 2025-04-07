@@ -1278,12 +1278,9 @@ class GrowingModule(torch.nn.Module):
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
             optimal added weights alpha, omega and eigenvalues lambda
         """
-        try:
-            matrix_n = self.tensor_n
-        except AttributeError as e:
-            raise AttributeError(
-                "It seems that the tensor N is not accessible. I have no idea why this occurs sometimes."
-            ) from e
+        matrix_n = self.tensor_n
+        # It seems that sometimes the tensor N is not accessible.
+        # I have no idea why this occurs sometimes.
 
         assert self.previous_module, (
             f"No previous module for {self.name}."
