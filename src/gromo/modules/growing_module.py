@@ -51,7 +51,7 @@ class MergeGrowingModule(torch.nn.Module):
             tensor_s_shape,
             update_function=self.compute_s_update,
             device=self.device,
-            name=f"S({name})",
+            name=f"S({self.name})",
         )
 
         self.previous_tensor_s: TensorStatistic | None = None
@@ -474,13 +474,13 @@ class GrowingModule(torch.nn.Module):
             tensor_s_shape,
             update_function=self.compute_s_update,
             device=self.device,
-            name=f"S({name})",
+            name=f"S({self.name})",
         )
         self.tensor_m = TensorStatistic(
             tensor_m_shape,
             update_function=self.compute_m_update,
             device=self.device,
-            name=f"M({name})",
+            name=f"M({self.name})",
         )
         # self.tensor_n = TensorStatistic(output_shape, update_function=self.compute_n_update)
 
@@ -511,13 +511,13 @@ class GrowingModule(torch.nn.Module):
             None,
             update_function=self.compute_m_prev_update,
             device=self.device,
-            name=f"M_prev({name})",
+            name=f"M_prev({self.name})",
         )
         self.cross_covariance = TensorStatistic(
             None,
             update_function=self.compute_cross_covariance_update,
             device=self.device,
-            name=f"C({name})",
+            name=f"C({self.name})",
         )
 
         self.s_growth_is_needed = s_growth_is_needed
