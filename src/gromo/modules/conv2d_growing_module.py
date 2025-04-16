@@ -236,69 +236,6 @@ class Conv2dGrowingModule(GrowingModule):
             self.input.shape[0],
         )
 
-    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
-        """
-        Compute the update of the tensor P := B[-2] <x> B[-1].
-        Precisely: P(abe) = Bt[-2](ixab) Bc[-1](iex)
-        where Bt[-2] is the masked unfolded input of the previous layer
-        and Bc[-1] is the unfolded input of the current layer.
-
-        Returns
-        -------
-        torch.Tensor
-            update of the tensor P
-        int
-            number of samples used to compute the update
-        """
-        if self.previous_module is None:
-            raise ValueError(
-                f"No previous module for {self.name}. Thus the cross covariance is not defined."
-            )
-        elif isinstance(self.previous_module, LinearGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, LinearMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            return (
-                torch.einsum(
-                    "ixab, iex -> abe",
-                    self.masked_unfolded_prev_input,
-                    self.unfolded_extended_input,
-                ),
-                self.input.shape[0],
-            )
-        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this")
-        else:
-            raise NotImplementedError(
-                f"The computation of P is not implemented yet "
-                f"for {type(self.previous_module)} as previous module."
-            )
-
-    @property
-    def tensor_n(self) -> torch.Tensor:
-        """
-        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
-
-        Returns
-        -------
-        torch.Tensor
-            N
-        """
-        assert (
-            self.tensor_m_prev() is not None
-        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
-        assert (
-            self.cross_covariance() is not None
-        ), f"The cross covariance should be computed before the tensor N for {self.name}."
-        assert (
-            self.delta_raw is not None
-        ), f"The optimal delta should be computed before the tensor N for {self.name}."
-        return (
-            -self.tensor_m_prev()
-            - torch.einsum("abe, ce -> bca", self.cross_covariance(), self.delta_raw)
-        ).flatten(start_dim=-2)
-
     # Layer edition
     def layer_of_tensor(
         self, weight: torch.Tensor, bias: torch.Tensor | None = None
@@ -837,6 +774,91 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
+    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor P := B[-2] <x> B[-1].
+        Precisely: P(ab) = Bc[-2](iax) Bc[-1](ibx)
+        where Bc[-2] is the unfolded input of the previous layer
+        and Bc[-1] is the unfolded input of the current layer.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor P
+        int
+            number of samples used to compute the update
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus the cross covariance is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return (
+                torch.einsum(
+                    "iax, ibx -> ab",
+                    self.previous_module.unfolded_extended_input,
+                    self.unfolded_extended_input,
+                ),
+                self.input.shape[0],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of P is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    @property
+    def tensor_n(self) -> torch.Tensor:
+        """
+        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
+
+        Returns
+        -------
+        torch.Tensor
+            N
+        """
+        assert (
+            self.tensor_m_prev() is not None
+        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        assert (
+            self.cross_covariance() is not None
+        ), f"The cross covariance should be computed before the tensor N for {self.name}."
+        assert isinstance(
+            self.cross_covariance(), torch.Tensor
+        ), f"The cross covariance should be a tensor for {self.name}, is {type(self.cross_covariance())}."
+        assert (
+            self.cross_covariance().shape[1]
+            == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+        ), (
+            f"The cross covariance should have shape (..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1]})"
+            f"but got {self.cross_covariance().shape}."
+        )
+        assert (
+            self.delta_raw is not None
+        ), f"The optimal delta should be computed before the tensor N for {self.name}."
+        assert isinstance(
+            self.delta_raw, torch.Tensor
+        ), f"The optimal delta should be a tensor for {self.name}, is {type(self.delta_raw)}."
+        assert (
+            self.delta_raw.shape[0]
+            == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+        ), (
+            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1]}, ...)"
+            f"but got {self.delta_raw.shape}."
+        )
+        assert (
+            self.delta_raw.shape[1] == self.out_channels
+        ), f"The delta should have shape ({self.out_channels}, ...) but got {self.delta_raw.shape}."
+        return -self.tensor_m_prev() - torch.einsum(
+            "ab, bc -> ac", self.cross_covariance(), self.delta_raw
+        )
+
     def compute_optimal_added_parameters(
         self,
         numerical_threshold: float = 1e-15,
@@ -1104,6 +1126,69 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             ),
             self.masked_unfolded_prev_input.shape[0],
         )
+
+    def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
+        """
+        Compute the update of the tensor P := B[-2] <x> B[-1].
+        Precisely: P(abe) = Bt[-2](ixab) Bc[-1](iex)
+        where Bt[-2] is the masked unfolded input of the previous layer
+        and Bc[-1] is the unfolded input of the current layer.
+
+        Returns
+        -------
+        torch.Tensor
+            update of the tensor P
+        int
+            number of samples used to compute the update
+        """
+        if self.previous_module is None:
+            raise ValueError(
+                f"No previous module for {self.name}. Thus the cross covariance is not defined."
+            )
+        elif isinstance(self.previous_module, LinearGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, LinearMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        elif isinstance(self.previous_module, Conv2dGrowingModule):
+            return (
+                torch.einsum(
+                    "ixab, iex -> abe",
+                    self.masked_unfolded_prev_input,
+                    self.unfolded_extended_input,
+                ),
+                self.input.shape[0],
+            )
+        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
+            raise NotImplementedError("TODO: implement this")
+        else:
+            raise NotImplementedError(
+                f"The computation of P is not implemented yet "
+                f"for {type(self.previous_module)} as previous module."
+            )
+
+    @property
+    def tensor_n(self) -> torch.Tensor:
+        """
+        Compute the tensor N for the layer with the current M_-2, C and optimal delta.
+
+        Returns
+        -------
+        torch.Tensor
+            N
+        """
+        assert (
+            self.tensor_m_prev() is not None
+        ), f"The tensor M_{-2} should be computed before the tensor N for {self.name}."
+        assert (
+            self.cross_covariance() is not None
+        ), f"The cross covariance should be computed before the tensor N for {self.name}."
+        assert (
+            self.delta_raw is not None
+        ), f"The optimal delta should be computed before the tensor N for {self.name}."
+        return (
+            -self.tensor_m_prev()
+            - torch.einsum("abe, ce -> bca", self.cross_covariance(), self.delta_raw)
+        ).flatten(start_dim=-2)
 
     def compute_optimal_added_parameters(
         self,
