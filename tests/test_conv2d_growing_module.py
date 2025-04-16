@@ -3,18 +3,21 @@ from unittest import TestCase, main, skip
 
 import torch
 
-from gromo.modules.conv2d_growing_module import Conv2dGrowingModule
+from gromo.modules.conv2d_growing_module import (
+    Conv2dGrowingModule,
+    FullConv2dGrowingModule,
+)
 from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase, indicator_batch
 
 
-class TestConv2dGrowingModule(TorchTestCase):
+class TestFullConv2dGrowingModule(TorchTestCase):
     def setUp(self):
         self.demo_layer = torch.nn.Conv2d(
             2, 7, (3, 5), bias=False, device=global_device()
         )
-        self.demo = Conv2dGrowingModule(
+        self.demo = FullConv2dGrowingModule(
             in_channels=2, out_channels=7, kernel_size=(3, 5), use_bias=False
         )
         self.demo.layer = self.demo_layer
@@ -22,7 +25,7 @@ class TestConv2dGrowingModule(TorchTestCase):
         self.demo_layer_b = torch.nn.Conv2d(
             2, 7, 3, padding=1, bias=True, device=global_device()
         )
-        self.demo_b = Conv2dGrowingModule(
+        self.demo_b = FullConv2dGrowingModule(
             in_channels=2, out_channels=7, kernel_size=3, padding=1, use_bias=True
         )
         self.demo_b.layer = self.demo_layer_b
@@ -34,7 +37,7 @@ class TestConv2dGrowingModule(TorchTestCase):
 
         self.demo_couple = dict()
         for bias in (True, False):
-            demo_in = Conv2dGrowingModule(
+            demo_in = FullConv2dGrowingModule(
                 in_channels=2,
                 out_channels=5,
                 kernel_size=(3, 3),
@@ -42,7 +45,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 use_bias=bias,
                 device=global_device(),
             )
-            demo_out = Conv2dGrowingModule(
+            demo_out = FullConv2dGrowingModule(
                 in_channels=5,
                 out_channels=7,
                 kernel_size=(5, 5),
@@ -591,7 +594,7 @@ class TestConv2dGrowingModule(TorchTestCase):
         for bias in (True, False):
             with self.subTest(bias=bias):
                 demo_couple = self.demo_couple[bias]
-                demo_couple_1 = Conv2dGrowingModule(
+                demo_couple_1 = FullConv2dGrowingModule(
                     in_channels=5,
                     out_channels=2,
                     kernel_size=(3, 3),
