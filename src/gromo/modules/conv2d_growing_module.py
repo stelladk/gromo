@@ -540,7 +540,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         """
         if self.previous_module is None:
             raise ValueError(
-                f"No previous module for {self.name}. Thus S is not defined."
+                f"No previous module for {self.name}. Thus S growth is not defined."
             )
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             return self.previous_module.tensor_s

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from unittest import TestCase, main, skip
+from unittest import main
 
 import torch
 
@@ -84,15 +84,22 @@ class TestConv2dGrowingModule(TorchTestCase):
         y = self.demo_b(self.input_x)
         self.assertTrue(torch.equal(y, self.demo_layer_b(self.input_x)))
 
+    def test_padding(self):
+        self.assertEqual(self.demo_layer.padding, (0, 0))
+        y = self.demo_layer(self.input_x)
+        self.assertShapeEqual(y, (-1, -1, 8, 6))
+        self.demo_layer.padding = (1, 2)
+        self.assertEqual(self.demo_layer.padding, (1, 2))
+        y = self.demo_layer(self.input_x)
+        self.assertShapeEqual(y, (-1, -1, 10, 10))
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_number_of_parameters(self, bias: bool):
-        for bias in (True, False):
-            with self.subTest(bias=bias):
-                self.assertEqual(
-                    self.bias_demos[bias].number_of_parameters(),
-                    self.bias_demos[bias].layer.weight.numel()
-                    + (self.bias_demos[bias].layer.bias.numel() if bias else 0),
-                )
+        self.assertEqual(
+            self.bias_demos[bias].number_of_parameters(),
+            self.bias_demos[bias].layer.weight.numel()
+            + (self.bias_demos[bias].layer.bias.numel() if bias else 0),
+        )
 
     def test_str(self):
         self.assertIsInstance(str(self.demo), str)
@@ -681,6 +688,9 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_tensor_s_growth_redirection(self, bias: bool):
+        with self.assertRaises(ValueError):
+            self.bias_demos[bias].tensor_s_growth.init()
+
         demo_in, demo_out = self.demo_couple[bias]
         demo_in.store_input = True
         demo_in.tensor_s.init()
