@@ -835,9 +835,11 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.cross_covariance().shape[1]
             == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+            + self.use_bias
         ), (
-            f"The cross covariance should have shape (..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1]})"
-            f"but got {self.cross_covariance().shape}."
+            f"The cross covariance should have shape "
+            f"(..., {self.in_channels * self.kernel_size[0] * self.kernel_size[1]  + self.use_bias})"
+            f" but got {self.cross_covariance().shape}."
         )
         assert (
             self.delta_raw is not None
