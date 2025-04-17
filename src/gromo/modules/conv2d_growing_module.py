@@ -113,6 +113,14 @@ class Conv2dGrowingModule(GrowingModule):
     # however this won't work if we do not have only the activation function as the post_layer_function
 
     @property
+    def padding(self):
+        return self.layer.padding
+
+    @padding.setter
+    def padding(self, value):
+        self.layer.padding = value
+
+    @property
     def unfolded_extended_input(self) -> torch.Tensor:
         """
         Return the unfolded input extended with a channel of ones if the bias is used.
@@ -758,6 +766,14 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             raise NotImplementedError("TODO: implement this")
         elif isinstance(self.previous_module, Conv2dGrowingModule):
             unfolded_extended_input = self.previous_module.unfolded_extended_input
+            assert unfolded_extended_input.shape[0] == desired_activation.shape[0], (
+                f"The number of samples is incoherent: {unfolded_extended_input.shape[0]=} "
+                f"and {desired_activation.shape[0]=} should be equal."
+            )
+            assert unfolded_extended_input.shape[2] == desired_activation.shape[2], (
+                f"The number of features is incoherent: {unfolded_extended_input.shape[2]=} "
+                f"and {desired_activation.shape[2]=} should be equal."
+            )
             return (
                 torch.einsum(
                     "iax, icx -> ac",
@@ -850,9 +866,10 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         assert (
             self.delta_raw.shape[0]
             == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+            + self.use_bias
         ), (
-            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1]}, ...)"
-            f"but got {self.delta_raw.shape}."
+            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, ...)"
+            f" but got {self.delta_raw.shape}."
         )
         assert (
             self.delta_raw.shape[1] == self.out_channels
