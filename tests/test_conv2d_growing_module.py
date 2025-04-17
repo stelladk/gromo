@@ -148,13 +148,17 @@ class TestConv2dGrowingModule(TorchTestCase):
         y = local_demo(self.input_x)
         y_main = y[:, : self.demo.out_channels]
         y_ext = y[:, self.demo.out_channels :]
-        self.assertTrue(
-            torch.allclose(y_main, y_main_th, atol=1e-6),
-            f"Error: ({torch.abs(y_main - y_main_th).max().item():.2e})",
+        self.assertAllClose(
+            y_main,
+            y_main_th,
+            atol=1e-6,
+            message=f"Error: ({torch.abs(y_main - y_main_th).max().item():.2e})",
         )
-        self.assertTrue(
-            torch.allclose(y_ext, y_ext_th, atol=1e-6),
-            f"Error: ({torch.abs(y_ext - y_ext_th).max().item():.2e})",
+        self.assertAllClose(
+            y_ext,
+            y_ext_th,
+            atol=1e-6,
+            message=f"Error: ({torch.abs(y_ext - y_ext_th).max().item():.2e})",
         )
 
     def test_layer_out_extension_with_bias(self):
@@ -169,13 +173,17 @@ class TestConv2dGrowingModule(TorchTestCase):
         y = local_demo(self.input_x)
         y_main = y[:, : self.demo_b.out_channels]
         y_ext = y[:, self.demo_b.out_channels :]
-        self.assertTrue(
-            torch.allclose(y_main, y_main_th, atol=1e-6),
-            f"Error: ({torch.abs(y_main - y_main_th).max().item():.2e})",
+        self.assertAllClose(
+            y_main,
+            y_main_th,
+            atol=1e-6,
+            message=f"Error: ({torch.abs(y_main - y_main_th).max().item():.2e})",
         )
-        self.assertTrue(
-            torch.allclose(y_ext, y_ext_th, atol=1e-6),
-            f"Error: ({torch.abs(y_ext - y_ext_th).max().item():.2e})",
+        self.assertAllClose(
+            y_ext,
+            y_ext_th,
+            atol=1e-6,
+            message=f"Error: ({torch.abs(y_ext - y_ext_th).max().item():.2e})",
         )
 
     def test_tensor_s_update_without_bias(self):
@@ -197,9 +205,7 @@ class TestConv2dGrowingModule(TorchTestCase):
 
         f = self.demo.in_channels * self.demo.kernel_size[0] * self.demo.kernel_size[1]
         self.assertEqual(self.demo.tensor_s().shape, (f, f))
-        self.assertTrue(
-            torch.allclose(self.demo.tensor_s(), self.demo.tensor_s().transpose(0, 1))
-        )
+        self.assertAllClose(self.demo.tensor_s(), self.demo.tensor_s().transpose(0, 1))
 
     def test_tensor_s_update_with_bias(self):
         self.demo_b.store_input = True
@@ -223,8 +229,8 @@ class TestConv2dGrowingModule(TorchTestCase):
         )
         # we do the average on the number of samples n but
         # should we not do it on the number of blocks n * h * w ?
-        self.assertTrue(
-            torch.allclose(self.demo_b.tensor_s(), self.demo_b.tensor_s().transpose(0, 1))
+        self.assertAllClose(
+            self.demo_b.tensor_s(), self.demo_b.tensor_s().transpose(0, 1)
         )
 
     def test_tensor_m_update_without_bias(self):
@@ -361,9 +367,7 @@ class TestConv2dGrowingModule(TorchTestCase):
             0.0,
             f"Ratio value: {ratio_value} should be positive, as we do W - gamma * dW*",
         )
-        self.assertTrue(
-            torch.allclose(ratio_tensor, ratio_value * torch.ones_like(ratio_tensor))
-        )
+        self.assertAllClose(ratio_tensor, ratio_value * torch.ones_like(ratio_tensor))
 
         self.demo.scaling_factor = abs(ratio_value) ** 0.5
         self.demo.apply_change()
@@ -371,6 +375,27 @@ class TestConv2dGrowingModule(TorchTestCase):
         y = self.demo(input_x)
         loss = torch.norm(y)
         self.assertLess(loss.item(), 1e-3)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_update_input_size(self, bias: bool):
+        demo_layer = self.bias_demos[bias]
+
+        # error
+        with self.assertRaises(AssertionError):
+            demo_layer.update_input_size()
+
+        # automatic setting
+        demo_layer.store_input = True
+        demo_layer(self.input_x)
+
+        demo_layer.update_input_size()
+        self.assertEqual(demo_layer.input_size, (10, 10))
+
+        # manual
+        with self.assertWarns(Warning):
+            demo_layer.update_input_size((7, 7))
+
+        self.assertEqual(demo_layer.input_size, (7, 7))
 
 
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
@@ -695,6 +720,7 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertAllClose(
             y_ref,
             y_test,
+            atol=1e-6,
             message=f"The constructed convolution is not similar to a linear layer",
         )
 
@@ -795,6 +821,39 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         demo_out.delta_raw = torch.randn_like(demo_out.delta_raw)
         n = demo_out.tensor_n
         self.assertIsInstance(n, torch.Tensor)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_added_parameters(self, bias: bool):
+        demo_in, demo_out = self.demo_couple[bias]
+
+        # TODO: remove this line to handle the general case
+        demo_out.padding = (2, 2)
+
+        demo_out.init_computation()
+
+        x = demo_in(self.input_x)
+        y = demo_out(x)
+        loss = torch.nn.functional.mse_loss(y, torch.zeros_like(y))
+        loss.backward()
+
+        demo_out.update_computation()
+
+        demo_out.delta_raw = torch.zeros(
+            demo_out.in_channels * demo_out.kernel_size[0] * demo_out.kernel_size[1]
+            + bias,
+            demo_out.out_channels,
+            device=global_device(),
+        )
+
+        alpha, alpha_b, omega, eigs = demo_out.compute_optimal_added_parameters()
+
+        self.assertIsInstance(alpha, torch.Tensor)
+        self.assertIsInstance(omega, torch.Tensor)
+        self.assertIsInstance(eigs, torch.Tensor)
+        if bias:
+            self.assertIsInstance(alpha_b, torch.Tensor)
+        else:
+            self.assertIsNone(alpha_b)
 
 
 if __name__ == "__main__":

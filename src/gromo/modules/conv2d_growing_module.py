@@ -456,122 +456,6 @@ class Conv2dGrowingModule(GrowingModule):
                     f"yet for {type(self.previous_module)} as previous module."
                 )
 
-    # Optimal update computation
-    def compute_optimal_added_parameters(
-        self,
-        numerical_threshold: float = 1e-15,
-        statistical_threshold: float = 1e-3,
-        maximum_added_neurons: int | None = None,
-        update_previous: bool = True,
-        dtype: torch.dtype = torch.float32,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
-        """
-        Compute the optimal added parameters to extend the input layer.
-
-        Parameters
-        ----------
-        numerical_threshold: float
-            threshold to consider an eigenvalue as zero in the square root of the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
-        maximum_added_neurons: int | None
-            maximum number of added neurons, if None all significant neurons are kept
-        update_previous: bool
-            whether to change the previous layer extended_output_layer
-        dtype: torch.dtype
-            dtype for S and N during the computation
-
-        Returns
-        -------
-        tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]
-            optimal added weights (alpha weights, alpha bias, omega) and eigenvalues lambda
-        """
-        alpha, omega, self.eigenvalues_extension = self._auxiliary_compute_alpha_omega(
-            numerical_threshold=numerical_threshold,
-            statistical_threshold=statistical_threshold,
-            maximum_added_neurons=maximum_added_neurons,
-            dtype=dtype,
-        )
-
-        k = self.eigenvalues_extension.shape[0]
-        assert alpha.shape[0] == omega.shape[1] == k, (
-            f"alpha and omega should have the same number of added neurons {k}."
-            f"but got {alpha.shape} and {omega.shape}."
-        )
-        assert (
-            omega.shape[0]
-            == self.out_channels * self.kernel_size[0] * self.kernel_size[1]
-        ), f"omega should have the same number of output features as the layer."
-
-        if self.previous_module.use_bias:
-            alpha_weight = alpha[:, :-1]
-            alpha_bias = alpha[:, -1]
-        else:
-            alpha_weight = alpha
-            alpha_bias = None
-
-        if isinstance(self.previous_module, LinearGrowingModule):
-            raise NotImplementedError("TODO: should we implement Lin -> Conv")
-        elif isinstance(self.previous_module, Conv2dGrowingModule):
-            alpha_weight = alpha_weight.reshape(
-                k,
-                self.previous_module.in_channels,
-                self.previous_module.kernel_size[0],
-                self.previous_module.kernel_size[1],
-            )
-        elif isinstance(self.previous_module, Conv2dMergeGrowingModule):
-            raise NotImplementedError("TODO: implement this: Conv Add -> Conv")
-        elif isinstance(self.previous_module, LinearMergeGrowingModule):
-            raise NotImplementedError("TODO: should we implement Lin Add -> Conv")
-        else:
-            raise NotImplementedError
-
-        omega = omega.reshape(
-            self.out_channels, self.kernel_size[0], self.kernel_size[1], k
-        ).permute(0, 3, 1, 2)
-
-        assert omega.shape == (
-            self.out_channels,
-            k,
-            self.kernel_size[0],
-            self.kernel_size[1],
-        ), (
-            f"omega should have shape ({k}, {self.out_channels}, {self.kernel_size[0]}, {self.kernel_size[1]})"
-            f"but got {omega.shape}."
-        )
-        assert alpha.shape[0] == k, (
-            f"alpha should have shape ({k}, ...)" f"but got {alpha.shape}."
-        )
-
-        self.extended_input_layer = self.layer_of_tensor(
-            omega,
-            bias=(
-                torch.zeros(self.out_channels, device=self.device)
-                if self.use_bias
-                else None
-            ),
-        )
-
-        if update_previous:
-            if isinstance(
-                self.previous_module, LinearGrowingModule | Conv2dGrowingModule
-            ):
-                self.previous_module.extended_output_layer = (
-                    self.previous_module.layer_of_tensor(alpha_weight, alpha_bias)
-                )
-            elif isinstance(
-                self.previous_module,
-                LinearMergeGrowingModule | Conv2dMergeGrowingModule,
-            ):
-                raise NotImplementedError("TODO: implement this")
-            else:
-                raise NotImplementedError(
-                    f"The computation of the optimal added parameters is not implemented "
-                    f"yet for {type(self.previous_module)} as previous module."
-                )
-
-        return alpha_weight, alpha_bias, omega, self.eigenvalues_extension
-
     def update_input_size(self, input_size: tuple[int, int] | None = None) -> None:
         """
         Update the input size of the layer. Either according to the parameter or the input currently stored.
@@ -592,7 +476,7 @@ class Conv2dGrowingModule(GrowingModule):
         else:
             raise AssertionError(f"Unable to compute the input size for {self.name}.")
 
-        if self.input_size != (-1, -1) and self.input.shape[-2:] != self.input_size:
+        if self.input_size != (-1, -1) and new_size != self.input_size:
             warn(
                 f"The input size of the layer {self.name} has changed from {self.input_size} to {new_size}."
                 f"This may lead to errors if the size of the tensor statistics "
