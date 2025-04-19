@@ -8,7 +8,11 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_mask_tensor_t, compute_output_shape_conv
+from gromo.utils.tools import (
+    apply_border_effect_on_unfolded,
+    compute_mask_tensor_t,
+    compute_output_shape_conv,
+)
 from gromo.utils.utils import global_device
 
 
@@ -612,6 +616,19 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             new_layer.bias = torch.nn.Parameter(bias)
         return new_layer
 
+    @property
+    def bordered_unfolded_extended_prev_input(self) -> torch.Tensor:
+        """
+        Return the unfolded input extended with a channel of ones if the bias is used of
+        the previous layer and with border effect of the current layer already applied.
+        """
+        self.previous_module.update_input_size()
+        return apply_border_effect_on_unfolded(
+            unfolded_tensor=self.previous_module.unfolded_extended_input,
+            original_size=self.previous_module.input_size,
+            border_effect_conv=self.layer,
+        )
+
     def compute_m_prev_update(
         self, desired_activation: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, int]:
@@ -645,7 +662,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             raise NotImplementedError("TODO: implement this")
         elif isinstance(self.previous_module, Conv2dGrowingModule):
-            unfolded_extended_input = self.previous_module.unfolded_extended_input
+            unfolded_extended_input = self.bordered_unfolded_extended_prev_input
             assert unfolded_extended_input.shape[0] == desired_activation.shape[0], (
                 f"The number of samples is incoherent: {unfolded_extended_input.shape[0]=} "
                 f"and {desired_activation.shape[0]=} should be equal."
@@ -696,7 +713,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             return (
                 torch.einsum(
                     "iax, ibx -> ab",
-                    self.previous_module.unfolded_extended_input,
+                    self.bordered_unfolded_extended_prev_input,
                     self.unfolded_extended_input,
                 ),
                 self.input.shape[0],

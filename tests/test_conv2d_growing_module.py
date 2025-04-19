@@ -767,9 +767,6 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         demo_in, demo_out = self.demo_couple[bias]
         demo_out.__class__ = RestrictedConv2dGrowingModule
 
-        # TODO: remove this line to handle the general case
-        demo_out.padding = (2, 2)
-
         demo_in.store_input = True
         demo_out.store_input = True
         demo_out.cross_covariance.init()
@@ -793,9 +790,6 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_tensor_n_computation(self, bias: bool):
         demo_in, demo_out = self.demo_couple[bias]
-
-        # TODO: remove this line to handle the general case
-        demo_out.padding = (2, 2)
 
         demo_in.store_input = True
         demo_out.store_input = True
@@ -835,9 +829,6 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_added_parameters(self, bias: bool):
         demo_in, demo_out = self.demo_couple[bias]
-
-        # TODO: remove this line to handle the general case
-        demo_out.padding = (2, 2)
 
         demo_out.init_computation()
 
