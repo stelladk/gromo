@@ -8,11 +8,7 @@ from gromo.modules.linear_growing_module import (
     LinearMergeGrowingModule,
 )
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import (
-    compute_mask_tensor_t,
-    compute_optimal_added_parameters,
-    compute_output_shape_conv,
-)
+from gromo.utils.tools import compute_mask_tensor_t, compute_output_shape_conv
 from gromo.utils.utils import global_device
 
 
