@@ -252,7 +252,7 @@ def apply_border_effect_on_unfolded(
     ----------
     unfolded_tensor: torch.Tensor
         unfolded tensor to be modified
-    orginal_size: tuple[int, int]
+    original_size: tuple[int, int]
         original size of the tensor before unfolding
     border_effect_conv: torch.Conv2d
         convolutional layer to be applied on the unfolded tensor
