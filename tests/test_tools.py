@@ -151,6 +151,31 @@ class TestTools(TorchTestCase):
                         f"Error: {torch.abs(y_th - y_via_mask).max().item():.2e}",
                     )
 
+    def test_apply_border_effect_on_unfolded_typing(self, bias: bool = False):
+        conv1 = torch.nn.Conv2d(2, 3, (3, 5), padding=(1, 2), bias=bias)
+        conv2 = torch.nn.Conv2d(3, 4, (3, 5), padding=(1, 2), bias=False)
+        x = torch.randn(11, 2, 13, 17)
+        unfolded_x = torch.nn.functional.unfold(
+            x,
+            kernel_size=conv1.kernel_size,
+            padding=conv1.padding,
+            stride=conv1.stride,
+            dilation=conv1.dilation,
+        )
+        # everything is ok
+        _ = apply_border_effect_on_unfolded(
+            unfolded_x,
+            (x.shape[2], x.shape[3]),
+            border_effect_conv=conv2,
+        )
+        unfolded_x = None
+        with self.assertRaises(TypeError):
+            _ = apply_border_effect_on_unfolded(
+                unfolded_x,  # type: ignore
+                (x.shape[2], x.shape[3]),
+                border_effect_conv=conv2,
+            )
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_apply_border_effect_on_unfolded(self, bias: bool):
         for kh in (1, 2, 3):
