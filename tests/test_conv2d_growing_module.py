@@ -85,12 +85,12 @@ class TestConv2dGrowingModule(TorchTestCase):
         self.assertTrue(torch.equal(y, self.demo_layer_b(self.input_x)))
 
     def test_padding(self):
-        self.assertEqual(self.demo_layer.padding, (0, 0))
-        y = self.demo_layer(self.input_x)
+        self.assertEqual(self.demo.padding, (0, 0))
+        y = self.demo(self.input_x)
         self.assertShapeEqual(y, (-1, -1, 8, 6))
-        self.demo_layer.padding = (1, 2)
-        self.assertEqual(self.demo_layer.padding, (1, 2))
-        y = self.demo_layer(self.input_x)
+        self.demo.padding = (1, 2)
+        self.assertEqual(self.demo.padding, (1, 2))
+        y = self.demo(self.input_x)
         self.assertShapeEqual(y, (-1, -1, 10, 10))
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
@@ -407,6 +407,33 @@ class TestConv2dGrowingModule(TorchTestCase):
 
 class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
     _tested_class = FullConv2dGrowingModule
+
+    def test_masked_unfolded_prev_input_no_prev(self, bias: bool = True):
+        demo = self.bias_demos[bias]
+        demo.store_input = True
+        demo(self.input_x)
+        with self.assertRaises(ValueError):
+            demo.masked_unfolded_prev_input()
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_masked_unfolded_prev_input(self, bias: bool = False):
+        demos = self.demo_couple[bias]
+        demos[0].store_input = True
+        y = demos[0](self.input_x)
+        demos[1].update_input_size(y.shape[2:])
+        y = demos[1](y)
+
+        masked_unfolded_tensor = demos[1].masked_unfolded_prev_input
+        self.assertShapeEqual(
+            masked_unfolded_tensor,
+            (
+                self.input_x.shape[0],
+                y.shape[2] * y.shape[3],
+                demos[1].kernel_size[0] * demos[1].kernel_size[1],
+                demos[0].kernel_size[0] * demos[0].kernel_size[1] * demos[0].in_channels
+                + bias,
+            ),
+        )
 
     def test_mask_tensor_t(self):
         with self.assertRaises(AssertionError):
