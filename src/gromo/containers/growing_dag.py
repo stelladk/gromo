@@ -205,6 +205,16 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         return [self.get_node_module(node) for node in nodes]
 
+    def get_all_edge_modules(self) -> list[LinearGrowingModule]:
+        """Getter functions for all modules attached to edges
+
+        Returns
+        -------
+        list[LinearGrowingModule]
+            list of modules for all existing edges
+        """
+        return self.get_edge_modules(list(self.edges))
+
     def get_all_node_modules(self) -> list[LinearMergeGrowingModule]:
         """Getter function for all modules attached to nodes
 
@@ -456,6 +466,20 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
             )
 
         self._get_ancestors(self.root)
+
+    def reset_computation(self) -> None:
+        """Reset the computation of the optimal added parameters on the whole network"""
+        for edge_module in self.get_all_edge_modules():
+            edge_module.reset_computation()
+        for node_module in self.get_all_node_modules():
+            node_module.reset_computation()
+
+    def delete_update(self) -> None:
+        """Delete extended input and output layers and optimal added parameters on the whole network"""
+        for edge_module in self.get_all_edge_modules():
+            edge_module.delete_update(include_output=True)
+        for node_module in self.get_all_node_modules():
+            node_module.delete_update()
 
     def is_empty(self) -> bool:
         return nx.is_empty(self)
