@@ -601,7 +601,6 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         if constant_module:
             # Remove constant module if needed
             self.remove_direct_edge(self.root, self.end)
-            self.remove_direct_edge(self.root, self.end)
 
         # TODO: Temporary solution
         for expansion in actions:
