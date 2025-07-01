@@ -1,5 +1,4 @@
 import torch
-from scipy.spatial.distance import pdist, squareform
 
 from gromo.utils.utils import global_device
 
@@ -12,8 +11,9 @@ def linear_kernel(X):
 def gaussian_kernel(X, sigma=None):
     """Computes the gaussian kernel matrix"""
     # dist = np.sum((X[:, np.newaxis] - X) ** 2, axis=-1) # (n,n)
-    dist = squareform(pdist(X, "euclidean")) ** 2
-    dist = torch.tensor(dist, device=global_device())
+    # dist = squareform(pdist(X, "euclidean")) ** 2
+    # dist = torch.tensor(dist, device=global_device())
+    dist = torch.cdist(X, X) ** 2
     if sigma is None:
         var = torch.median(dist)
         # print(f"Automatic variance selection with Median Heuristic: {var}")
@@ -58,7 +58,7 @@ def calculate_dependency(
     indices = torch.randperm(len(Y))[:n_samples]
 
     Y_matrix = Y[indices]
-    Y_matrix = slow_gaussian_kernel(Y_matrix)
+    Y_matrix = gaussian_kernel(Y_matrix)
     Y_matrix = center_kernel_matrix(Y_matrix)
     hsicY = HSIC(Y_matrix, Y_matrix)
 
@@ -66,7 +66,7 @@ def calculate_dependency(
 
     for name, X_matrix in X_inputs.items():
         X_matrix = X_matrix[indices]
-        X_matrix = slow_gaussian_kernel(X_matrix)
+        X_matrix = gaussian_kernel(X_matrix)
 
         X_matrix = center_kernel_matrix(X_matrix)
         hsicX = HSIC(X_matrix, X_matrix)
