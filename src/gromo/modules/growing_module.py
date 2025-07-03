@@ -50,7 +50,7 @@ class MergeGrowingModule(torch.nn.Module):
 
         self.tensor_s = TensorStatistic(
             tensor_s_shape,
-            update_function=self.compute_s_update,
+            update_function=self._get_compute_s_update,
             device=self.device,
             name=f"S({self.name})",
         )
@@ -205,6 +205,10 @@ class MergeGrowingModule(torch.nn.Module):
             v_proj -= module.optimal_delta_layer(module.input)
 
         return v_proj
+
+    @property
+    def _get_compute_s_update(self):
+        return self.compute_s_update
 
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
         """
@@ -473,13 +477,13 @@ class GrowingModule(torch.nn.Module):
 
         self._tensor_s = TensorStatistic(
             tensor_s_shape,
-            update_function=self.compute_s_update,
+            update_function=self._get_compute_s_update,
             device=self.device,
             name=f"S({self.name})",
         )
         self.tensor_m = TensorStatistic(
             tensor_m_shape,
-            update_function=self.compute_m_update,
+            update_function=self._get_compute_m_update,
             device=self.device,
             name=f"M({self.name})",
         )
@@ -510,13 +514,13 @@ class GrowingModule(torch.nn.Module):
         # if self._allow_growing: # FIXME: should we add this condition?
         self.tensor_m_prev = TensorStatistic(
             None,
-            update_function=self.compute_m_prev_update,
+            update_function=self._get_compute_m_prev_update,
             device=self.device,
             name=f"M_prev({self.name})",
         )
         self.cross_covariance = TensorStatistic(
             None,
-            update_function=self.compute_cross_covariance_update,
+            update_function=self._get_compute_cross_covariance_update,
             device=self.device,
             name=f"C({self.name})",
         )
@@ -525,7 +529,7 @@ class GrowingModule(torch.nn.Module):
         if s_growth_is_needed:
             self.tensor_s_growth = TensorStatistic(
                 None,
-                update_function=self.compute_s_growth_update,
+                update_function=self._get_compute_s_growth_update,
                 device=self.device,
                 name=f"S_growth({name})",
             )
@@ -829,6 +833,10 @@ class GrowingModule(torch.nn.Module):
         )
         return self.pre_activity.grad - self.optimal_delta_layer(input_vector)
 
+    @property
+    def _get_compute_s_update(self):
+        return self.compute_s_update
+
     def compute_s_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor S. Should be added to the type of layer.
@@ -858,6 +866,10 @@ class GrowingModule(torch.nn.Module):
         else:
             return self._tensor_s
 
+    @property
+    def _get_compute_m_update(self):
+        return self.compute_m_update
+
     def compute_m_update(
         self, desired_activation: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, int]:
@@ -877,6 +889,10 @@ class GrowingModule(torch.nn.Module):
             number of samples used to compute the update
         """
         raise NotImplementedError
+
+    @property
+    def _get_compute_m_prev_update(self):
+        return self.compute_m_prev_update
 
     def compute_m_prev_update(
         self, desired_activation: torch.Tensor | None = None
@@ -898,6 +914,10 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
+    @property
+    def _get_compute_cross_covariance_update(self):
+        return self.compute_cross_covariance_update
+
     def compute_cross_covariance_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor C := B[-1] B[-2]^T.
@@ -910,6 +930,10 @@ class GrowingModule(torch.nn.Module):
             number of samples used to compute the update
         """
         raise NotImplementedError
+
+    @property
+    def _get_compute_s_growth_update(self):
+        return self.compute_s_growth_update
 
     def compute_s_growth_update(self) -> tuple[torch.Tensor, int]:
         """
