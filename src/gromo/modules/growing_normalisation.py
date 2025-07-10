@@ -93,19 +93,21 @@ class GrowingBatchNorm2d(nn.BatchNorm2d):
                 f"additional_features must be positive, got {additional_features}"
             )
 
-        # Determine device
-        if device is None:
-            if self.weight is not None:
-                device = self.weight.device
-            else:
-                device = torch.device("cpu")
-
         # Store old num_features
         old_num_features = self.num_features
         new_num_features = old_num_features + additional_features
 
         # Update num_features
         self.num_features = new_num_features
+
+        # Determine device
+        if device is None:
+            if self.weight is not None:
+                device = self.weight.device
+            elif self.running_mean is not None:
+                device = self.running_mean.device
+            else:
+                return
 
         # Extend weight parameter if affine=True
         if self.affine and self.weight is not None:
@@ -150,6 +152,7 @@ class GrowingBatchNorm2d(nn.BatchNorm2d):
                         f"new_running_mean must have {additional_features} elements, got {new_running_mean.shape[0]}"
                     )
 
+                print(f"{self.running_mean.device=}, {new_running_mean.device=}")
                 extended_running_mean = torch.cat(
                     [self.running_mean, new_running_mean.to(device)]
                 )
@@ -185,7 +188,7 @@ class GrowingBatchNorm2d(nn.BatchNorm2d):
         Extra representation string for the layer.
         """
         return (
-            f"{self.num_features}, eps={self.eps}, momentum={self.momentum}, affine={self.affine}, "
+            f"{self.num_features}, eps={self.eps:.1e}, momentum={self.momentum:.1e}, affine={self.affine}, "
             f"track_running_stats={self.track_running_stats}, name={self.name}"
         )
 
