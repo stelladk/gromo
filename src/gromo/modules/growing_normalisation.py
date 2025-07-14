@@ -104,7 +104,6 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             elif self.running_mean is not None:
                 device = self.running_mean.device
             else:
-                device = torch.device("cpu")
                 return  # No parameters to extend
 
         # Extend weight parameter if affine=True
@@ -200,7 +199,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         }
 
 
-class GrowingBatchNorm2d(nn.BatchNorm2d, GrowingBatchNorm):
+class GrowingBatchNorm2d(GrowingBatchNorm, nn.BatchNorm2d):
     """
     A batch normalization layer that can grow in the number of features.
 
@@ -218,7 +217,7 @@ class GrowingBatchNorm2d(nn.BatchNorm2d, GrowingBatchNorm):
         )
 
 
-class GrowingBatchNorm1d(nn.BatchNorm1d, GrowingBatchNorm):
+class GrowingBatchNorm1d(GrowingBatchNorm, nn.BatchNorm1d):
     """
     A 1D batch normalization layer that can grow in the number of features.
 

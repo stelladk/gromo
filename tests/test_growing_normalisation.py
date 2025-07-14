@@ -280,6 +280,20 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
         self.assertEqual(bn.weight.shape[0], self.initial_features + 8)
         self.assertEqual(bn.bias.shape[0], self.initial_features + 8)
 
+    def test_grow_dummy(self):
+        """Grow with no running stats and no affine"""
+        bn = GrowingBatchNorm2d(
+            num_features=self.initial_features,
+            track_running_stats=False,
+            affine=False,
+            device=self.device,
+        )
+
+        # Grow the layer
+        bn.grow(8)
+
+        self.assertEqual(bn.num_features, self.initial_features + 8)
+
     def test_grow_error_cases(self):
         """Test error cases for grow method."""
         bn = GrowingBatchNorm2d(num_features=self.initial_features, device=self.device)
@@ -443,6 +457,13 @@ class TestGrowingBatchNorm1d(unittest.TestCase):
         # Forward pass should work without errors
         output = bn(x)
         self.assertEqual(output.shape, x.shape)
+
+    def test_extra_repr(self):
+        """Test extra_repr method."""
+        bn = GrowingBatchNorm1d(
+            num_features=self.initial_features, device=self.device, name="test_bn_1d"
+        )
+        self.assertIsInstance(bn.extra_repr(), str)
 
 
 if __name__ == "__main__":
