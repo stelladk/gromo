@@ -106,7 +106,8 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
 
         # Concatenate old and new values
         assert new_values is not None  # Type hint for mypy
-        extended_param = torch.cat([current_param.data, new_values])
+        with torch.no_grad():
+            extended_param = torch.cat([current_param.detach(), new_values])
 
         if as_parameter:
             setattr(self, param_name, nn.Parameter(extended_param))
