@@ -25,10 +25,10 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         track_running_stats: bool = True,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-        name: str = "growing_batch_norm_2d",
+        name: str = "growing_batch_norm",
     ):
         """
-        Initialize the GrowingBatchNorm2d layer.
+        Initialize the base growing batch norm functionality.
 
         Parameters
         ----------
@@ -46,7 +46,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             Device to place the layer on
         dtype : torch.dtype, optional
             Data type for the parameters
-        name : str, default="growing_batch_norm_2d"
+        name : str, default="growing_batch_norm"
             Name of the layer for debugging
         """
         super(GrowingBatchNorm, self).__init__(
@@ -59,7 +59,59 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             dtype=dtype,
         )
         self.name = name
-        self.original_num_features = self.num_features
+
+    def _extend_parameter(
+        self,
+        param_name: str,
+        additional_features: int,
+        new_values: Optional[torch.Tensor],
+        default_value_fn,
+        device: torch.device,
+        as_parameter: bool = True,
+    ) -> None:
+        """
+        Helper method to extend a parameter or buffer.
+
+        Parameters
+        ----------
+        param_name : str
+            Name of the parameter/buffer to extend
+        additional_features : int
+            Number of additional features to add
+        new_values : torch.Tensor, optional
+            Custom values for the new features. If None, uses default_value_fn.
+        default_value_fn : callable
+            Function to generate default values: fn(additional_features, device, dtype) -> torch.Tensor
+        device : torch.device
+            Device to place new parameters on
+        as_parameter : bool, default=True
+            Whether to treat as nn.Parameter (True) or buffer (False)
+        """
+        current_param = getattr(self, param_name, None)
+        if current_param is None:
+            return
+
+        if new_values is None:
+            new_values = default_value_fn(
+                additional_features, device=device, dtype=current_param.dtype
+            )
+        else:
+            if new_values.shape[0] != additional_features:
+                raise ValueError(
+                    f"new_{param_name} must have {additional_features} elements, got {new_values.shape[0]}"
+                )
+            # Ensure new_values is on the correct device
+            if new_values.device != device:
+                new_values = new_values.to(device)
+
+        # Concatenate old and new values
+        assert new_values is not None  # Type hint for mypy
+        extended_param = torch.cat([current_param.data, new_values])
+
+        if as_parameter:
+            setattr(self, param_name, nn.Parameter(extended_param))
+        else:
+            self.register_buffer(param_name, extended_param)
 
     def grow(
         self,
@@ -93,93 +145,50 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
                 f"additional_features must be positive, got {additional_features}"
             )
 
-        # Store old num_features
-        old_num_features = self.num_features
-        self.num_features = old_num_features + additional_features
+        # Update num_features
+        self.num_features += additional_features
 
-        # Determine device
-        if device is None:
-            if self.weight is not None:
-                device = self.weight.device
-            elif self.running_mean is not None:
-                device = self.running_mean.device
-            else:
-                return  # No parameters to extend
+        # Extend affine parameters if enabled
+        if getattr(self, "affine", False):
+            device = self.weight.device
+            self._extend_parameter(
+                "weight",
+                additional_features,
+                new_weights,
+                torch.ones,
+                device,
+                as_parameter=True,
+            )
+            self._extend_parameter(
+                "bias",
+                additional_features,
+                new_biases,
+                torch.zeros,
+                device,
+                as_parameter=True,
+            )
 
-        # Extend weight parameter if affine=True
-        if getattr(self, "affine", False) and self.weight is not None:
-            if new_weights is None:
-                new_weights = torch.ones(
-                    additional_features, device=device, dtype=self.weight.dtype
-                )
-            elif new_weights.shape[0] != additional_features:
-                raise ValueError(
-                    f"new_weights must have {additional_features} elements, got {new_weights.shape[0]}"
-                )
-
-            # Concatenate old and new weights
-            extended_weight = torch.cat([self.weight.data, new_weights.to(device)])
-            self.weight = nn.Parameter(extended_weight)
-
-        # Extend bias parameter if affine=True
-        if getattr(self, "affine", False) and self.bias is not None:
-            if new_biases is None:
-                new_biases = torch.zeros(
-                    additional_features, device=device, dtype=self.bias.dtype
-                )
-            elif new_biases.shape[0] != additional_features:
-                raise ValueError(
-                    f"new_biases must have {additional_features} elements, got {new_biases.shape[0]}"
-                )
-
-            # Concatenate old and new biases
-            extended_bias = torch.cat([self.bias.data, new_biases.to(device)])
-            self.bias = nn.Parameter(extended_bias)
-
-        # Extend running statistics if track_running_stats=True
+        # Extend running statistics if enabled
         if getattr(self, "track_running_stats", False):
-            # Extend running_mean
-            if self.running_mean is not None:
-                if new_running_mean is None:
-                    new_running_mean = torch.zeros(
-                        additional_features, device=device, dtype=self.running_mean.dtype
-                    )
-                elif new_running_mean.shape[0] != additional_features:
-                    raise ValueError(
-                        f"new_running_mean must have {additional_features} elements, got {new_running_mean.shape[0]}"
-                    )
+            device = self.running_mean.device
+            self._extend_parameter(
+                "running_mean",
+                additional_features,
+                new_running_mean,
+                torch.zeros,
+                device,
+                as_parameter=False,
+            )
+            self._extend_parameter(
+                "running_var",
+                additional_features,
+                new_running_var,
+                torch.ones,
+                device,
+                as_parameter=False,
+            )
 
-                extended_running_mean = torch.cat(
-                    [self.running_mean, new_running_mean.to(device)]
-                )
-                # self.running_mean = extended_running_mean
-                self.register_buffer(
-                    "running_mean",
-                    extended_running_mean,
-                )
-
-            # Extend running_var
-            if self.running_var is not None:
-                if new_running_var is None:
-                    new_running_var = torch.ones(
-                        additional_features, device=device, dtype=self.running_var.dtype
-                    )
-                elif new_running_var.shape[0] != additional_features:
-                    raise ValueError(
-                        f"new_running_var must have {additional_features} elements, got {new_running_var.shape[0]}"
-                    )
-
-                extended_running_var = torch.cat(
-                    [self.running_var, new_running_var.to(device)]
-                )
-                # self.running_var = extended_running_var
-                self.register_buffer(
-                    "running_var",
-                    extended_running_var,
-                )
-
-            # Extend num_batches_tracked (this is just a counter, so no need to extend)
-            # It will continue tracking from where it left off
+        # Note: num_batches_tracked is just a counter, so no need to extend
 
     def get_growth_info(self) -> dict:
         """
@@ -191,10 +200,7 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             Dictionary containing growth information
         """
         return {
-            "original_num_features": self.original_num_features,
-            "current_num_features": self.num_features,
-            "total_growth": self.num_features - self.original_num_features,
-            "growth_ratio": self.num_features / self.original_num_features,
+            "num_features": self.num_features,
             "name": self.name,
         }
 

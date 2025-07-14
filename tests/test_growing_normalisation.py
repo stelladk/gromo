@@ -33,7 +33,6 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
         )
 
         self.assertEqual(bn.num_features, self.initial_features)
-        self.assertEqual(bn.original_num_features, self.initial_features)
         self.assertEqual(bn.name, "test_bn")
         self.assertEqual(bn.eps, 1e-5)
         self.assertEqual(bn.momentum, 0.1)
@@ -328,21 +327,13 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
 
         # Initial info
         info = bn.get_growth_info()
-        self.assertEqual(info["original_num_features"], self.initial_features)
-        self.assertEqual(info["current_num_features"], self.initial_features)
-        self.assertEqual(info["total_growth"], 0)
-        self.assertEqual(info["growth_ratio"], 1.0)
+        self.assertEqual(info["num_features"], self.initial_features)
         self.assertEqual(info["name"], "test_bn")
 
         # After growth
         bn.grow(16)
         info = bn.get_growth_info()
-        self.assertEqual(info["original_num_features"], self.initial_features)
-        self.assertEqual(info["current_num_features"], self.initial_features + 16)
-        self.assertEqual(info["total_growth"], 16)
-        self.assertEqual(
-            info["growth_ratio"], (self.initial_features + 16) / self.initial_features
-        )
+        self.assertEqual(info["num_features"], self.initial_features + 16)
 
     def test_extra_repr(self):
         """Test extra_repr method."""
@@ -400,7 +391,6 @@ class TestGrowingBatchNorm1d(unittest.TestCase):
         )
 
         self.assertEqual(bn.num_features, self.initial_features)
-        self.assertEqual(bn.original_num_features, self.initial_features)
         self.assertEqual(bn.name, "test_bn_1d")
 
     def test_forward_pass_1d(self):
