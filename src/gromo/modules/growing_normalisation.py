@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 
-class GrowingBatchNorm:
+class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
     """
     Base class for growing batch normalization layers.
 
@@ -16,15 +16,48 @@ class GrowingBatchNorm:
     layers by adding new parameters with default or custom values.
     """
 
-    def __init__(self, name: str = "growing_batch_norm"):
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-5,
+        momentum: float = 0.1,
+        affine: bool = True,
+        track_running_stats: bool = True,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+        name: str = "growing_batch_norm_2d",
+    ):
         """
-        Initialize the base growing batch norm functionality.
+        Initialize the GrowingBatchNorm2d layer.
 
         Parameters
         ----------
-        name : str
+        num_features : int
+            Number of features (channels) in the input
+        eps : float, default=1e-5
+            A value added to the denominator for numerical stability
+        momentum : float, default=0.1
+            The value used for the running_mean and running_var computation
+        affine : bool, default=True
+            Whether to learn affine parameters (weight and bias)
+        track_running_stats : bool, default=True
+            Whether to track running statistics
+        device : torch.device, optional
+            Device to place the layer on
+        dtype : torch.dtype, optional
+            Data type for the parameters
+        name : str, default="growing_batch_norm_2d"
             Name of the layer for debugging
         """
+        super(GrowingBatchNorm, self).__init__(
+            num_features=num_features,
+            eps=eps,
+            momentum=momentum,
+            affine=affine,
+            track_running_stats=track_running_stats,
+            device=device,
+            dtype=dtype,
+        )
         self.name = name
         self.original_num_features = self.num_features
 
@@ -120,7 +153,11 @@ class GrowingBatchNorm:
                 extended_running_mean = torch.cat(
                     [self.running_mean, new_running_mean.to(device)]
                 )
-                self.running_mean = extended_running_mean
+                # self.running_mean = extended_running_mean
+                self.register_buffer(
+                    "running_mean",
+                    extended_running_mean,
+                )
 
             # Extend running_var
             if self.running_var is not None:
@@ -136,7 +173,11 @@ class GrowingBatchNorm:
                 extended_running_var = torch.cat(
                     [self.running_var, new_running_var.to(device)]
                 )
-                self.running_var = extended_running_var
+                # self.running_var = extended_running_var
+                self.register_buffer(
+                    "running_var",
+                    extended_running_var,
+                )
 
             # Extend num_batches_tracked (this is just a counter, so no need to extend)
             # It will continue tracking from where it left off
@@ -167,51 +208,6 @@ class GrowingBatchNorm2d(nn.BatchNorm2d, GrowingBatchNorm):
     number of features by adding new parameters with default or custom values.
     """
 
-    def __init__(
-        self,
-        num_features: int,
-        eps: float = 1e-5,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-        name: str = "growing_batch_norm_2d",
-    ):
-        """
-        Initialize the GrowingBatchNorm2d layer.
-
-        Parameters
-        ----------
-        num_features : int
-            Number of features (channels) in the input
-        eps : float, default=1e-5
-            A value added to the denominator for numerical stability
-        momentum : float, default=0.1
-            The value used for the running_mean and running_var computation
-        affine : bool, default=True
-            Whether to learn affine parameters (weight and bias)
-        track_running_stats : bool, default=True
-            Whether to track running statistics
-        device : torch.device, optional
-            Device to place the layer on
-        dtype : torch.dtype, optional
-            Data type for the parameters
-        name : str, default="growing_batch_norm_2d"
-            Name of the layer for debugging
-        """
-        nn.BatchNorm2d.__init__(
-            self,
-            num_features=num_features,
-            eps=eps,
-            momentum=momentum,
-            affine=affine,
-            track_running_stats=track_running_stats,
-            device=device,
-            dtype=dtype,
-        )
-        GrowingBatchNorm.__init__(self, name=name)
-
     def extra_repr(self) -> str:
         """
         Extra representation string for the layer.
@@ -228,34 +224,6 @@ class GrowingBatchNorm1d(nn.BatchNorm1d, GrowingBatchNorm):
 
     Similar to GrowingBatchNorm2d but for 1D inputs.
     """
-
-    def __init__(
-        self,
-        num_features: int,
-        eps: float = 1e-5,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-        name: str = "growing_batch_norm_1d",
-    ):
-        """
-        Initialize the GrowingBatchNorm1d layer.
-
-        Parameters are the same as GrowingBatchNorm2d.
-        """
-        nn.BatchNorm1d.__init__(
-            self,
-            num_features=num_features,
-            eps=eps,
-            momentum=momentum,
-            affine=affine,
-            track_running_stats=track_running_stats,
-            device=device,
-            dtype=dtype,
-        )
-        GrowingBatchNorm.__init__(self, name=name)
 
     def extra_repr(self) -> str:
         """
