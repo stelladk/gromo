@@ -198,6 +198,12 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             "name": self.name,
         }
 
+    def extra_repr(self) -> str:
+        """
+        Extra representation string for the layer.
+        """
+        return f"{super().extra_repr()}, name={self.name}"
+
 
 class GrowingBatchNorm2d(GrowingBatchNorm, nn.BatchNorm2d):
     """
@@ -207,15 +213,6 @@ class GrowingBatchNorm2d(GrowingBatchNorm, nn.BatchNorm2d):
     number of features by adding new parameters with default or custom values.
     """
 
-    def extra_repr(self) -> str:
-        """
-        Extra representation string for the layer.
-        """
-        return (
-            f"{self.num_features}, eps={self.eps:.1e}, momentum={self.momentum:.1e}, affine={self.affine}, "
-            f"track_running_stats={self.track_running_stats}, name={self.name}"
-        )
-
 
 class GrowingBatchNorm1d(GrowingBatchNorm, nn.BatchNorm1d):
     """
@@ -223,12 +220,3 @@ class GrowingBatchNorm1d(GrowingBatchNorm, nn.BatchNorm1d):
 
     Similar to GrowingBatchNorm2d but for 1D inputs.
     """
-
-    def extra_repr(self) -> str:
-        """
-        Extra representation string for the layer.
-        """
-        return (
-            f"{self.num_features}, eps={self.eps}, momentum={self.momentum}, affine={self.affine}, "
-            f"track_running_stats={self.track_running_stats}, name={self.name}"
-        )
