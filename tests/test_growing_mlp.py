@@ -88,7 +88,6 @@ class TestGrowingMLP(unittest.TestCase):
             activation=nn.ReLU(),
             flatten=False
         )
-        print(model)
         x = torch.randn(1, *in_features)
         y = model.forward(x)
         self.assertEqual(y.shape, (1, *in_features[:-1], self.out_features))
