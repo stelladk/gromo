@@ -28,7 +28,7 @@ class GrowingMLP(GrowingContainer):
 
         Parameters
         ----------
-        in_features : int
+        in_features : int | list | tuple
             Number of input features.
         out_features : int
             Number of output features.
