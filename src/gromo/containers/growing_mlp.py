@@ -40,6 +40,8 @@ class GrowingMLP(GrowingContainer):
             Activation function.
         use_bias : bool
             Whether to use bias in layers.
+        flatten : bool
+            Whether to flatten the input before passing it through the network.
         device : Optional[torch.device]
             Device to use for computation.
         """

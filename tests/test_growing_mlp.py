@@ -86,7 +86,7 @@ class TestGrowingMLP(unittest.TestCase):
             hidden_size=self.hidden_size,
             number_hidden_layers=self.number_hidden_layers,
             activation=nn.ReLU(),
-            flatten=False
+            flatten=False,
         )
         x = torch.randn(1, *in_features)
         y = model.forward(x)
