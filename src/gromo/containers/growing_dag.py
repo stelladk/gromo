@@ -571,6 +571,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # Forward - Backward step
         for X, Y in dataloader:
             self.zero_grad()
+            X, Y = X.to(self.device), Y.to(self.device)
             pred = self(X)
             loss = loss_fn(pred, Y)
             loss.backward()
