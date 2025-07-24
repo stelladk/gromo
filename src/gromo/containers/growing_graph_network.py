@@ -564,6 +564,7 @@ class GrowingGraphNetwork(GrowingContainer):
         X_val: torch.Tensor,
         Y_val: torch.Tensor,
         amplitude_factor: bool,
+        evaluate: bool = True,
         verbose: bool = False,
     ) -> None:
         """Execute all DAG expansions and save statistics
@@ -590,6 +591,8 @@ class GrowingGraphNetwork(GrowingContainer):
             validation labels
         amplitude_factor : bool
             use amplitude factor on new neurons
+        evaluate: bool
+            evaluate on datasets, by default True
         verbose : bool, optional
             print info, by default False
         """
@@ -641,22 +644,27 @@ class GrowingGraphNetwork(GrowingContainer):
                 )
 
             # Evaluate
-            acc_train, loss_train = expansion.dag.evaluate(
-                X_train, Y_train, loss_fn=self.loss_fn
-            )
-            acc_dev, loss_dev = expansion.dag.evaluate(X_dev, Y_dev, loss_fn=self.loss_fn)
-            acc_val, loss_val = expansion.dag.evaluate(X_val, Y_val, loss_fn=self.loss_fn)
+            if evaluate:
+                acc_train, loss_train = expansion.dag.evaluate(
+                    X_train, Y_train, loss_fn=self.loss_fn
+                )
+                acc_dev, loss_dev = expansion.dag.evaluate(
+                    X_dev, Y_dev, loss_fn=self.loss_fn
+                )
+                acc_val, loss_val = expansion.dag.evaluate(
+                    X_val, Y_val, loss_fn=self.loss_fn
+                )
 
-            # TODO: return all info instead of saving
-            expansion.metrics["loss_bott"] = bott_loss_history[-1]
-            expansion.metrics["loss_train"] = loss_train
-            expansion.metrics["loss_dev"] = loss_dev
-            expansion.metrics["loss_val"] = loss_val
-            expansion.metrics["acc_train"] = acc_train
-            expansion.metrics["acc_dev"] = acc_dev
-            expansion.metrics["acc_val"] = acc_val
-            expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
-            expansion.metrics["BIC"] = self.BIC(expansion.dag, loss_val, n=len(X_val))
+                # TODO: return all info instead of saving
+                expansion.metrics["loss_bott"] = bott_loss_history[-1]
+                expansion.metrics["loss_train"] = loss_train
+                expansion.metrics["loss_dev"] = loss_dev
+                expansion.metrics["loss_val"] = loss_val
+                expansion.metrics["acc_train"] = acc_train
+                expansion.metrics["acc_dev"] = acc_dev
+                expansion.metrics["acc_val"] = acc_val
+                expansion.metrics["nb_params"] = expansion.dag.count_parameters_all()
+                expansion.metrics["BIC"] = self.BIC(expansion.dag, loss_val, n=len(X_val))
 
     def restrict_action_space(
         self,
