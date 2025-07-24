@@ -271,6 +271,14 @@ class LinearMergeGrowingModule(MergeGrowingModule):
         ), f"The tensor M should have the same number of output features as the layer."
         if not force_pseudo_inverse:
             try:
+                if torch.linalg.cond(tensor_s) > 1e10:
+                    tensor_s = tensor_s + 1e-3 * torch.eye(
+                        tensor_s.size(0), device=tensor_s.device
+                    )
+                    if torch.linalg.cond(tensor_s) > 1e-10:
+                        raise torch.linalg.LinAlgError(
+                            f"Ill-conditioned tensor_s in {self.name}"
+                        )
                 delta = torch.linalg.solve(tensor_s, previous_tensor_m).t()
             except torch.linalg.LinAlgError:
                 force_pseudo_inverse = True
