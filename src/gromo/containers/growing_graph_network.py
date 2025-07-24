@@ -753,12 +753,12 @@ class GrowingGraphNetwork(GrowingContainer):
 
         best_ind = min(selection.items(), key=operator.itemgetter(1))[0]
 
-        if verbose:
-            print("Chose option", best_ind)
-
         # Reconstruct graph
         best_option = options[best_ind]
         del options  # TODO: memory freed?
+
+        if verbose:
+            print("Chose option", best_ind, best_option)
 
         self.dag = copy.copy(best_option.dag)
         self.growth_history = copy.copy(best_option.growth_history)
