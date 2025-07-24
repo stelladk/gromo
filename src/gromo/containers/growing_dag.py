@@ -70,6 +70,49 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         self.update_connections(edges)
         self.id_last_node_added = max(len(node_attributes.keys()) - 2, 0)
 
+    def init_computation(self):
+        for node_module in self.get_all_node_modules():
+            if node_module._name == self.root:
+                node_module.store_activity = True
+            else:
+                node_module.init_computation()
+
+    def update_computation(self):
+        for node_module in self.get_all_node_modules():
+            if node_module._name == self.root:
+                continue
+            node_module.previous_tensor_s.update()
+            node_module.previous_tensor_m.update()
+
+    def reset_computation(self):
+        """Reset the computation of the optimal added parameters on the whole network"""
+        for node_module in self.get_all_node_modules():
+            node_module.reset_computation()
+
+    def compute_optimal_updates(self, *args, **kwargs):
+        for node_module in self.get_all_node_modules():
+            node_module.compute_optimal_updates(*args, **kwargs)
+
+    def compute_optimal_delta(
+        self,
+        update: bool = True,
+        return_deltas: bool = False,
+        force_pseudo_inverse: bool = False,
+    ):
+        for node_module in self.get_all_node_modules():
+            if node_module._name == self.root:
+                continue
+            node_module.compute_optimal_delta(
+                update=update,
+                return_deltas=return_deltas,
+                force_pseudo_inverse=force_pseudo_inverse,
+            )
+
+    def delete_update(self):
+        """Delete extended input and output layers and optimal added parameters on the whole network"""
+        for node_module in self.get_all_node_modules():
+            node_module.delete_update(include_previous=True)
+
     def init_dag_parameters(self) -> dict:
         edges = [(self.root, self.end)]
         node_attributes = {
@@ -467,28 +510,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         self._get_ancestors(self.root)
 
-    def reset_computation(self) -> None:
-        """Reset the computation of the optimal added parameters on the whole network"""
-        for edge_module in self.get_all_edge_modules():
-            edge_module.reset_computation()
-        for node_module in self.get_all_node_modules():
-            node_module.reset_computation()
-
-    def delete_update(self) -> None:
-        """Delete extended input and output layers and optimal added parameters on the whole network"""
-        for edge_module in self.get_all_edge_modules():
-            edge_module.delete_update(include_output=True)
-        for node_module in self.get_all_node_modules():
-            node_module.delete_update()
-
     def is_empty(self) -> bool:
         return nx.is_empty(self)
 
     def calculate_bottleneck(
         self,
         actions: list["Expansion"],
-        X: torch.Tensor,
-        Y: torch.Tensor,
+        dataloader: torch.utils.data.DataLoader,
         loss_fn: Callable = nn.CrossEntropyLoss(),
     ) -> tuple[dict, dict]:
         """Calculate expressivity bottleneck on important nodes
@@ -499,10 +527,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         ----------
         actions : list[Expansion]
             list with growth actions information
-        X : torch.Tensor
-            train features
-        Y : torch.Tensor
-            train labels
+        dataloader : torch.utils.data.DataLoader
+            train features and labels
         loss_fn : Callable, optional
             loss function for bottleneck calculation, by default torch.nn.CrossEntropyLoss
 
@@ -540,43 +566,34 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # Add hooks on node modules of interest
         prev_node_modules = self.get_node_modules(prev_node_modules)
         next_node_modules = self.get_node_modules(next_node_modules)
-        for node_module in prev_node_modules:
-            node_module.store_activity = True
-        for node_module in next_node_modules:
-            node_module.init_computation()
+        self.init_computation()
 
         # Forward - Backward step
-        pred = self(X)
-        loss = loss_fn(pred, Y)
-        loss.backward()
+        for X, Y in dataloader:
+            self.zero_grad()
+            pred = self(X)
+            loss = loss_fn(pred, Y)
+            loss.backward()
+            self.update_computation()
 
         input_B = {}
         bottleneck = {}
 
-        # Update tensors
+        # Compute optimal possible updates
+        self.compute_optimal_delta()
+
         for node_module in next_node_modules:
-            assert node_module.previous_tensor_s is not None
-            assert node_module.previous_tensor_m is not None
-            node_module.previous_tensor_s.update()
-            node_module.previous_tensor_m.update()
-
-            # Compute optimal possible updates
-            node_module.compute_optimal_delta(update=True, return_deltas=False)
-
             # Compute expressivity bottleneck
             bottleneck[node_module._name] = (
                 node_module.projected_v_goal().clone().detach()
             )  # (batch_size, out_features)
-
-            # TODO: separate to functions that add the hooks and remove them
 
             if constant_module:
                 assert torch.all(
                     bottleneck[node_module._name] == node_module.pre_activity.grad
                 ), "Graph is empty and the bottleneck should be the same as the pre_activity gradient. Expected: {node_module.pre_activity.grad} Found: {bottleneck[node_module._name]}"
 
-            # Reset tensors and remove hooks
-            node_module.reset_computation()
+        self.reset_computation()
 
         # Retrieve input activities
         for node_module in prev_node_modules:
