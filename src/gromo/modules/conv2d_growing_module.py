@@ -785,8 +785,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
             + self.use_bias
         ), (
-            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, ...)"
-            f" but got {self.delta_raw.shape}."
+            f"Expected delta_raw.shape[1] == {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, "
+            f"but got {self.delta_raw.shape[1]} (full shape: {self.delta_raw.shape})."
         )
         assert (
             self.delta_raw.shape[0] == self.out_channels
