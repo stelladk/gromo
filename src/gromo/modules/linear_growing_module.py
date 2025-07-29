@@ -563,6 +563,8 @@ class LinearGrowingModule(GrowingModule):
                 f"for {type(self.previous_module)} as previous module."
             )
 
+    # TODO: The `compute_n_update` method is currently disabled because it is not used in the current implementation.
+    #       It may be re-enabled in the future if the functionality for computing the tensor N is required.
     # def compute_n_update(self) -> tuple[torch.Tensor, int]:
     #     """
     #     Compute the update of the tensor N.
