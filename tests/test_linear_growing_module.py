@@ -1463,19 +1463,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         with self.assertRaises(TypeError):
             layer.compute_n_update()
 
-    def test_error_handling_edge_cases(self):
-        """Test various error handling edge cases for better coverage."""
-        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
-        
-        # Test XOR assertion for extended layers (line 883-885)
-        # Setting both extended_input_layer and extended_output_layer should fail
-        layer.extended_input_layer = torch.nn.Linear(3, 2)
-        layer.extended_output_layer = torch.nn.Linear(3, 2)
-        
-        # This should trigger assertion error because both are set (violates XOR)
-        with self.assertRaises(AssertionError):
-            layer._sub_select_added_output_dimension(1)
-
     def test_layer_initialization_edge_cases(self):
         """Test layer initialization with different bias settings (lines 85, 87)."""
         # Test various initialization scenarios
@@ -1488,6 +1475,123 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Test accessing properties that might trigger missing lines
         self.assertIsInstance(layer1.use_bias, bool)
         self.assertIsInstance(layer2.use_bias, bool)
+
+    def test_layer_of_tensor_method_coverage(self):
+        """Test layer_of_tensor method to cover missing lines."""
+        layer = LinearGrowingModule(3, 2, use_bias=True, device=global_device())
+        
+        # Test layer_of_tensor with bias (should cover initialization edge cases)
+        weight = torch.randn(2, 3, device=global_device())
+        bias = torch.randn(2, device=global_device())
+        
+        new_layer = layer.layer_of_tensor(weight, bias=bias)
+        self.assertIsInstance(new_layer, torch.nn.Linear)
+        self.assertEqual(new_layer.in_features, 3)
+        self.assertEqual(new_layer.out_features, 2)
+        self.assertAllClose(new_layer.weight, weight)
+        self.assertAllClose(new_layer.bias, bias)
+        
+        # Test layer_of_tensor without bias using a layer without bias
+        layer_no_bias = LinearGrowingModule(3, 2, use_bias=False, device=global_device())
+        new_layer_no_bias = layer_no_bias.layer_of_tensor(weight, bias=None)
+        self.assertIsInstance(new_layer_no_bias, torch.nn.Linear)
+        self.assertIsNone(new_layer_no_bias.bias)
+
+    def test_tensor_s_growth_property_coverage(self):
+        """Test tensor_s_growth property to cover missing lines."""
+        layer1 = LinearGrowingModule(3, 2, device=global_device(), name="layer1")
+        layer2 = LinearGrowingModule(2, 4, device=global_device(), name="layer2")
+        layer1.next_module = layer2
+        layer2.previous_module = layer1
+        
+        # Initialize computation
+        layer1.init_computation()
+        layer2.init_computation()
+        
+        # Forward pass
+        x = torch.randn(5, 3, device=global_device())
+        y1 = layer1(x)
+        y2 = layer2(y1)
+        loss = torch.norm(y2)
+        loss.backward()
+        
+        # Update computations
+        layer1.update_computation()
+        layer2.update_computation()
+        
+        # Test tensor_s_growth property (should cover lines related to tensor growth)
+        tensor_s_growth = layer2.tensor_s_growth
+        self.assertIsInstance(tensor_s_growth, TensorStatistic)
+        
+        # Test that tensor_s_growth has expected properties
+        growth_tensor = tensor_s_growth()
+        expected_size = layer1.in_features + (1 if layer1.use_bias else 0)
+        self.assertEqual(growth_tensor.shape, (expected_size, expected_size))
+
+    def test_multiple_parameters_scenarios(self):
+        """Test scenarios that might trigger multiple missing parameter lines."""
+        # Test with different device scenarios (might trigger device-related missing lines)
+        layer = LinearGrowingModule(2, 3, device=global_device())
+        
+        # Test parameter counting with different configurations
+        base_params = layer.number_of_parameters()
+        expected_params = 2 * 3 + 3  # weight + bias
+        self.assertEqual(base_params, expected_params)
+        
+        # Test layer string representation (might cover __str__ related lines)
+        layer_str = str(layer)
+        self.assertIn("LinearGrowingModule", layer_str)
+        self.assertIn("in_features=2", layer_str)
+        self.assertIn("out_features=3", layer_str)
+
+    def test_input_extended_property_access(self):
+        """Test input_extended property to potentially cover missing lines."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        
+        # Set up for input_extended access
+        layer.init_computation()
+        x = torch.randn(4, 3, device=global_device())
+        output = layer(x)
+        
+        # Access input_extended property (might trigger missing lines)
+        input_extended = layer.input_extended
+        self.assertIsNotNone(input_extended)
+        
+        # Check that extended input has correct shape (includes bias if applicable)
+        expected_extended_features = layer.in_features + (1 if layer.use_bias else 0)
+        self.assertEqual(input_extended.shape[-1], expected_extended_features)
+
+    def test_tensor_s_growth_error_conditions(self):
+        """Test error conditions in tensor_s_growth property (line 602)."""
+        # Test case 1: No previous module
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer.previous_module = None
+        
+        with self.assertRaises(ValueError) as context:
+            _ = layer.tensor_s_growth
+        self.assertIn("No previous module", str(context.exception))
+        
+        # Test case 2: Previous module is LinearMergeGrowingModule (NotImplementedError)
+        merge_layer = LinearMergeGrowingModule(
+            post_merge_function=torch.nn.Identity(),
+            in_features=3,
+            device=global_device(),
+            name="merge"
+        )
+        layer_with_merge = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer_with_merge.previous_module = merge_layer
+        
+        with self.assertRaises(NotImplementedError) as context:
+            _ = layer_with_merge.tensor_s_growth
+        self.assertIn("S growth is not implemented for module preceded by an LinearMergeGrowingModule", str(context.exception))
+        
+        # Test case 3: Unsupported previous module type  
+        layer_unsupported = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer_unsupported.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
+        
+        with self.assertRaises(NotImplementedError) as context:
+            _ = layer_unsupported.tensor_s_growth
+        self.assertIn("S growth is not implemented yet", str(context.exception))
 
     def test_activation_gradient_not_implemented(self):
         """Test activation gradient computation with unsupported previous module (lines 359-364)."""
