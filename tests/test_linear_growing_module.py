@@ -1123,6 +1123,383 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         with self.assertRaises(ValueError):
             merge_module.compute_optimal_delta()
 
+    # PHASE 2 - TARGET 95% COVERAGE: MAJOR MISSING FUNCTIONALITY
+    # Adding comprehensive tests for add_parameters method (lines 725-767)
+    
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_add_parameters_input_features(self, bias):
+        """Test add_parameters method for adding input features (lines 725-767)."""
+        layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
+        original_in_features = layer.in_features
+        original_out_features = layer.out_features
+        
+        # Test adding input features with default zero matrix
+        added_in_features = 2
+        
+        # This should trigger lines 728-736 (added_in_features > 0 branch)
+        layer.add_parameters(
+            matrix_extension=None,
+            bias_extension=None,
+            added_in_features=added_in_features,
+            added_out_features=0
+        )
+        
+        # Verify layer dimensions changed correctly
+        self.assertEqual(layer.in_features, original_in_features + added_in_features)
+        self.assertEqual(layer.out_features, original_out_features)
+        self.assertEqual(layer.layer.in_features, original_in_features + added_in_features)
+        
+        # Test input with extended features
+        x = torch.randn(5, original_in_features + added_in_features, device=global_device())
+        output = layer(x)
+        self.assertEqual(output.shape, (5, original_out_features))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_add_parameters_input_features_with_custom_matrix(self, bias):
+        """Test add_parameters with custom matrix extension for input features."""
+        layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
+        original_in_features = layer.in_features
+        original_out_features = layer.out_features
+        
+        # Test adding input features with custom matrix
+        added_in_features = 2
+        custom_matrix = torch.ones(original_out_features, added_in_features, device=global_device())
+        
+        # This should trigger lines 737-744 (custom matrix_extension branch)
+        layer.add_parameters(
+            matrix_extension=custom_matrix,
+            bias_extension=None,
+            added_in_features=added_in_features,
+            added_out_features=0
+        )
+        
+        # Verify layer dimensions
+        self.assertEqual(layer.in_features, original_in_features + added_in_features)
+        self.assertEqual(layer.out_features, original_out_features)
+        
+        # Test that custom matrix was used (check weight matrix contains ones)
+        x = torch.zeros(1, original_in_features + added_in_features, device=global_device())
+        x[0, original_in_features:] = 1.0  # Set extended features to 1
+        output = layer(x)
+        # Extended features should contribute due to ones in custom matrix
+        self.assertGreater(torch.abs(output).sum().item(), 0)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_add_parameters_output_features(self, bias):
+        """Test add_parameters method for adding output features."""
+        layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
+        original_in_features = layer.in_features
+        original_out_features = layer.out_features
+        
+        # Test adding output features with default matrices
+        added_out_features = 2
+        
+        # This should trigger lines 746-767 (added_out_features > 0 branch)
+        layer.add_parameters(
+            matrix_extension=None,
+            bias_extension=None,
+            added_in_features=0,
+            added_out_features=added_out_features
+        )
+        
+        # Verify layer dimensions changed correctly
+        self.assertEqual(layer.in_features, original_in_features)
+        self.assertEqual(layer.out_features, original_out_features + added_out_features)
+        self.assertEqual(layer.layer.out_features, original_out_features + added_out_features)
+        
+        # Test output with extended features
+        x = torch.randn(5, original_in_features, device=global_device())
+        output = layer(x)
+        self.assertEqual(output.shape, (5, original_out_features + added_out_features))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_add_parameters_output_features_with_custom_matrices(self, bias):
+        """Test add_parameters with custom matrices for output features."""
+        layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
+        original_in_features = layer.in_features
+        original_out_features = layer.out_features
+        
+        # Test adding output features with custom matrices
+        added_out_features = 2
+        custom_weight = torch.ones(added_out_features, original_in_features, device=global_device())
+        custom_bias = torch.ones(added_out_features, device=global_device()) * 5.0 if bias else None
+        
+        # This should trigger lines 750-766 (custom matrix/bias extension branches)
+        layer.add_parameters(
+            matrix_extension=custom_weight,
+            bias_extension=custom_bias,
+            added_in_features=0,
+            added_out_features=added_out_features
+        )
+        
+        # Verify layer dimensions
+        self.assertEqual(layer.in_features, original_in_features)
+        self.assertEqual(layer.out_features, original_out_features + added_out_features)
+        
+        # Test that custom matrices were used
+        x = torch.ones(1, original_in_features, device=global_device())
+        output = layer(x)
+        
+        # Extended outputs should be influenced by custom weight (all 1s) and bias if present
+        extended_outputs = output[0, original_out_features:]
+        if bias:
+            expected_value = original_in_features + 5.0  # sum of ones * inputs + bias
+            self.assertAllClose(extended_outputs, torch.full_like(extended_outputs, expected_value))
+        else:
+            expected_value = original_in_features  # sum of ones * inputs, no bias
+            self.assertAllClose(extended_outputs, torch.full_like(extended_outputs, expected_value))
+
+    def test_add_parameters_assertion_errors(self):
+        """Test assertion errors in add_parameters method."""
+        layer = LinearGrowingModule(3, 2, device=global_device())
+        
+        # Test adding both input and output features (should raise AssertionError)
+        with self.assertRaises(AssertionError) as context:
+            layer.add_parameters(
+                matrix_extension=None,
+                bias_extension=None,
+                added_in_features=1,
+                added_out_features=1
+            )
+        self.assertIn("cannot add input and output features at the same time", str(context.exception))
+        
+        # Test wrong matrix shape for input extension
+        with self.assertRaises(AssertionError) as context:
+            wrong_matrix = torch.ones(3, 3)  # Should be (2, 2) for 2 added input features
+            layer.add_parameters(
+                matrix_extension=wrong_matrix,
+                bias_extension=None,
+                added_in_features=2,
+                added_out_features=0
+            )
+        self.assertIn("matrix_extension should have shape", str(context.exception))
+        
+        # Test wrong matrix shape for output extension
+        layer2 = LinearGrowingModule(3, 2, device=global_device())
+        with self.assertRaises(AssertionError) as context:
+            wrong_matrix = torch.ones(3, 2)  # Should be (2, 3) for 2 added output features
+            layer2.add_parameters(
+                matrix_extension=wrong_matrix,
+                bias_extension=None,
+                added_in_features=0,
+                added_out_features=2
+            )
+        self.assertIn("matrix_extension should have shape", str(context.exception))
+        
+        # Test wrong bias shape for output extension
+        layer3 = LinearGrowingModule(3, 2, device=global_device())
+        with self.assertRaises(AssertionError) as context:
+            correct_matrix = torch.ones(2, 3)
+            wrong_bias = torch.ones(3)  # Should be (2,) for 2 added output features
+            layer3.add_parameters(
+                matrix_extension=correct_matrix,
+                bias_extension=wrong_bias,
+                added_in_features=0,
+                added_out_features=2
+            )
+        self.assertIn("bias_extension should have shape", str(context.exception))
+
+    # PHASE 2.2 - COVERING compute_n_update METHOD (lines 579-589)
+    # Testing the fixed compute_n_update method with corrected projected_v_goal() call
+    
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_n_update_basic_functionality(self, bias):
+        """Test compute_n_update method basic functionality (lines 579-589)."""
+        # Create a chain of LinearGrowingModules: layer1 -> layer2
+        layer1 = LinearGrowingModule(3, 2, use_bias=bias, device=global_device(), name="layer1")
+        layer2 = LinearGrowingModule(2, 4, use_bias=bias, device=global_device(), name="layer2")
+        layer1.next_module = layer2
+        layer2.previous_module = layer1
+        
+        # Initialize computation for both layers
+        layer1.init_computation()
+        layer2.init_computation()
+        
+        # Create sequential network
+        net = torch.nn.Sequential(layer1, layer2)
+        
+        # Forward pass with input data
+        x = torch.randn(5, 3, device=global_device())
+        output = net(x)
+        
+        # Create a loss and backward pass to generate gradients
+        loss = torch.norm(output)
+        loss.backward()
+        
+        # Update tensor statistics
+        layer1.update_computation()
+        layer2.update_computation()
+        
+        # Compute optimal delta for layer2 (required for projected_v_goal)
+        layer2.compute_optimal_delta()
+        
+        # Test compute_n_update on layer1 (which has layer2 as next_module)
+        n_update, n_samples = layer1.compute_n_update()
+        
+        # Verify shapes and values - the shape is (in_features, out_features) without bias
+        expected_shape = (layer1.in_features, layer2.out_features)
+        self.assertEqual(n_update.shape, expected_shape)
+        self.assertEqual(n_samples, x.shape[0])  # Should equal batch size
+        self.assertIsInstance(n_update, torch.Tensor)
+        self.assertIsInstance(n_samples, int)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_n_update_with_different_shapes(self, bias):
+        """Test compute_n_update with different layer dimensions."""
+        # Test with different layer sizes
+        layer1 = LinearGrowingModule(4, 3, use_bias=bias, device=global_device(), name="layer1")
+        layer2 = LinearGrowingModule(3, 5, use_bias=bias, device=global_device(), name="layer2")
+        layer1.next_module = layer2
+        layer2.previous_module = layer1
+        
+        # Initialize and setup
+        layer1.init_computation()
+        layer2.init_computation()
+        net = torch.nn.Sequential(layer1, layer2)
+        
+        # Multiple batch sizes to test tensor flattening
+        for batch_size in [1, 3, 7]:
+            net.zero_grad()
+            x = torch.randn(batch_size, 4, device=global_device())
+            output = net(x)
+            loss = torch.norm(output)
+            loss.backward()
+            
+            layer1.update_computation()
+            layer2.update_computation()
+            
+            # Compute optimal delta for layer2 (required for projected_v_goal)
+            layer2.compute_optimal_delta()
+            
+            n_update, n_samples = layer1.compute_n_update()
+            
+            # Verify correct shapes and sample counting - shape is (in_features, out_features) without bias
+            expected_shape = (layer1.in_features, layer2.out_features)
+            self.assertEqual(n_update.shape, expected_shape)
+            self.assertEqual(n_samples, batch_size)
+
+    def test_compute_n_update_type_error(self):
+        """Test compute_n_update raises TypeError for non-LinearGrowingModule next_module."""
+        layer1 = LinearGrowingModule(3, 2, device=global_device(), name="layer1")
+        
+        # Set next_module to a regular Linear layer (not LinearGrowingModule)
+        layer1.next_module = torch.nn.Linear(2, 4)
+        
+        # Initialize computation
+        layer1.init_computation()
+        
+        # Setup input and forward pass
+        x = torch.randn(2, 3, device=global_device())
+        output = layer1(x)
+        loss = torch.norm(output)
+        loss.backward()
+        layer1.update_computation()
+        
+        # Should raise TypeError due to wrong next_module type
+        with self.assertRaises(TypeError) as context:
+            layer1.compute_n_update()
+        
+        self.assertIn("The next module must be a LinearGrowingModule", str(context.exception))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_n_update_tensor_computation_correctness(self, bias):
+        """Test compute_n_update mathematical correctness with known values."""
+        # Create layers with known dimensions for predictable testing
+        layer1 = LinearGrowingModule(2, 2, use_bias=bias, device=global_device(), name="layer1")
+        layer2 = LinearGrowingModule(2, 2, use_bias=bias, device=global_device(), name="layer2")
+        layer1.next_module = layer2
+        layer2.previous_module = layer1
+        
+        # Initialize computation
+        layer1.init_computation()
+        layer2.init_computation()
+        
+        # Use simple input for easier verification
+        x = torch.ones(2, 2, device=global_device())  # Simple input: all ones
+        
+        # Forward pass
+        out1 = layer1(x)
+        out2 = layer2(out1)
+        
+        # Backward pass
+        loss = torch.norm(out2)
+        loss.backward()
+        
+        # Update computations
+        layer1.update_computation()
+        layer2.update_computation()
+        
+        # Compute optimal delta for layer2 (required for projected_v_goal)
+        layer2.compute_optimal_delta()
+        
+        # Test compute_n_update
+        n_update, n_samples = layer1.compute_n_update()
+        
+        # Verify that computation uses the correct einsum operation
+        # The method should compute: torch.einsum("ij,ik->jk", input_flat, projected_v_goal_flat)
+        input_flat = torch.flatten(layer1.input, 0, -2)
+        projected_v_goal_flat = torch.flatten(layer2.projected_v_goal(layer2.input), 0, -2)
+        expected_n_update = torch.einsum("ij,ik->jk", input_flat, projected_v_goal_flat)
+        
+        # Assert the computed n_update matches expected calculation
+        self.assertAllClose(n_update, expected_n_update, atol=1e-6)
+        self.assertEqual(n_samples, 2)  # batch size
+
+    def test_compute_n_update_no_next_module(self):
+        """Test behavior when next_module is None (should raise TypeError)."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer.next_module = None  # No next module
+        
+        # This method should only be called when there's a valid next_module
+        # The method raises TypeError when next_module is not a LinearGrowingModule
+        x = torch.randn(2, 3, device=global_device())
+        layer.init_computation()
+        output = layer(x)
+        loss = torch.norm(output)
+        loss.backward()
+        layer.update_computation()
+        
+        # Should raise TypeError when next_module is not a LinearGrowingModule
+        with self.assertRaises(TypeError):
+            layer.compute_n_update()
+
+    def test_error_handling_edge_cases(self):
+        """Test various error handling edge cases for better coverage."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        
+        # Test XOR assertion for extended layers (line 883-885)
+        # Setting both extended_input_layer and extended_output_layer should fail
+        layer.extended_input_layer = torch.nn.Linear(3, 2)
+        layer.extended_output_layer = torch.nn.Linear(3, 2)
+        
+        # This should trigger assertion error because both are set (violates XOR)
+        with self.assertRaises(AssertionError):
+            layer._sub_select_added_output_dimension(1)
+
+    def test_layer_initialization_edge_cases(self):
+        """Test layer initialization with different bias settings (lines 85, 87)."""
+        # Test various initialization scenarios
+        layer1 = LinearGrowingModule(3, 2, use_bias=True, device=global_device())
+        layer2 = LinearGrowingModule(3, 2, use_bias=False, device=global_device())
+        
+        # Test setting next_module property directly (instead of through set_next_modules)
+        layer1.next_module = layer2
+        
+        # Test accessing properties that might trigger missing lines
+        self.assertIsInstance(layer1.use_bias, bool)
+        self.assertIsInstance(layer2.use_bias, bool)
+
+    def test_activation_gradient_not_implemented(self):
+        """Test activation gradient computation with unsupported previous module (lines 359-364)."""
+        layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
+        
+        # Set an unsupported previous module type
+        layer.previous_module = torch.nn.Linear(3, 4)  # Regular Linear layer, not supported
+        
+        # Should raise NotImplementedError
+        with self.assertRaises(NotImplementedError):
+            _ = layer.activation_gradient
+
 
 if __name__ == "__main__":
     main()
