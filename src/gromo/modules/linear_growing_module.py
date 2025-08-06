@@ -581,7 +581,7 @@ class LinearGrowingModule(GrowingModule):
                 torch.einsum(
                     "ij,ik->jk",
                     torch.flatten(self.input, 0, -2),
-                    torch.flatten(self.next_module.projected_desired_update(), 0, -2),
+                    torch.flatten(self.next_module.projected_v_goal(self.next_module.input), 0, -2),
                 ),
                 torch.tensor(self.input.shape[:-1]).prod().int().item(),
             )
