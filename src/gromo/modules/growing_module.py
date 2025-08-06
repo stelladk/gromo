@@ -250,10 +250,11 @@ class MergeGrowingModule(torch.nn.Module):
         Initialize the computation of the optimal added parameters.
         """
         self.store_input = True
-        self.store_pre_activity = True
+        self.store_activity = True
         for module in self.previous_modules:
             module.store_input = True
             module.store_pre_activity = True
+        self.tensor_s.init()
         self.previous_tensor_s.init()
         self.previous_tensor_m.init()
 
@@ -262,13 +263,23 @@ class MergeGrowingModule(torch.nn.Module):
         Reset the computation of the optimal added parameters.
         """
         self.store_input = False
-        self.store_pre_activity = False
         self.store_activity = False
         for module in self.previous_modules:
             module.store_input = False
             module.store_pre_activity = False
+        self.tensor_s.reset()
         self.previous_tensor_s.reset()
         self.previous_tensor_m.reset()
+
+    def update_computation(self) -> None:
+        """
+        Update the computation of the optimal added parameters.
+        """
+        self.tensor_s.update()
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.update()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.update()
 
     def delete_update(self, include_previous: bool = False) -> None:
         """

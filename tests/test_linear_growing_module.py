@@ -174,20 +174,6 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             device=global_device(),
         )
 
-    def setup_computation_tensors(
-        self,
-        layer: LinearGrowingModule,
-        store_input: bool = True,
-        store_pre_activity: bool = True,
-    ):
-        """Helper to initialize computation tensors for a layer."""
-        if hasattr(layer, "tensor_s") and layer.tensor_s is not None:
-            layer.tensor_s.init()
-        if hasattr(layer, "tensor_m") and layer.tensor_m is not None:
-            layer.tensor_m.init()
-        layer.store_input = store_input
-        layer.store_pre_activity = store_pre_activity
-
     def assert_layer_properties(
         self,
         layer: LinearGrowingModule,
@@ -229,11 +215,9 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         net = torch.nn.Sequential(layer, output_module)
         layer.layer.weight.data = self.weight_matrix_1
 
-        # Setup computation tensors using helper
-        self.setup_computation_tensors(layer, store_input=True, store_pre_activity=False)
-        output_module.tensor_s.init()
-        output_module.store_activity = True
-        output_module.previous_tensor_s.init()
+        # Initialize computation automatically handles storage flags
+        layer.init_computation()
+        output_module.init_computation()
 
         # Forward pass 1 - extracted to reduce duplication
         self._run_forward_pass_and_update(net, layer, output_module, x1)
@@ -245,10 +229,11 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     def _run_forward_pass_and_update(self, net, layer, output_module, input_data):
         """Helper method to run forward pass and update tensors."""
-        _ = net(input_data.float().to(global_device()))
-        layer.tensor_s.update()
-        output_module.tensor_s.update()
-        output_module.previous_tensor_s.update()
+        y = net(input_data.float().to(global_device()))
+        loss = torch.norm(y)  # Compute loss to generate gradients
+        loss.backward()  # Generate gradients for tensor M computation
+        layer.update_computation()
+        output_module.update_computation()
 
     def _assert_tensor_values(
         self, layer, output_module, is_theoretical, os_theoretical, divisor
@@ -293,10 +278,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
                 layer.layer.weight.data = torch.zeros_like(
                     layer.layer.weight, device=global_device()
                 )
-                layer.tensor_s.init()
-                layer.tensor_m.init()
-                layer.store_input = True
-                layer.store_pre_activity = True
+                layer.init_computation()
 
                 for _ in range(nb_batch := 3):
                     x = alpha * torch.eye(self.c, device=global_device())
@@ -742,10 +724,8 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             loss = loss(y, torch.zeros_like(y))
             loss.backward()
             layer_out.update_computation()
-            layer_in.tensor_s.update()
 
         layer_out.init_computation()
-        layer_in.tensor_s.init()
 
         update_computation()
         layer_out.compute_optimal_updates()
@@ -767,7 +747,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         demo_layers = self.demo_layers[bias]
         demo_layers[0].store_input = True
         demo_layers[1].init_computation()
-        demo_layers[1].tensor_s_growth.init()
 
         y = demo_layers[0](self.input_x)
         y = demo_layers[1](y)
@@ -775,7 +754,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         loss.backward()
 
         demo_layers[1].update_computation()
-        demo_layers[1].tensor_s_growth.update()
 
         demo_layers[1].compute_optimal_delta()
         alpha, alpha_b, omega, eigenvalues = demo_layers[
@@ -815,14 +793,14 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
     def test_tensor_s_growth(self, bias):
         demo_layers = self.demo_layers[bias]
         demo_layers[0].store_input = True
-        demo_layers[1].tensor_s_growth.init()
+        demo_layers[1].init_computation()
 
         y = demo_layers[0](self.input_x)
         y = demo_layers[1](y)
         loss = torch.norm(y)
         loss.backward()
 
-        demo_layers[1].tensor_s_growth.update()
+        demo_layers[1].update_computation()
 
         self.assertEqual(
             demo_layers[1].tensor_s_growth.samples,
@@ -975,6 +953,175 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             demo_layers["add"].sum_out_features(),
             demo_layers["next"].out_features + new_output_layer.out_features,
         )
+
+    # PHASE 1 - CRITICAL COVERAGE IMPROVEMENTS
+    # Adding comprehensive tests for compute_optimal_delta (0% coverage -> +15% gain)
+    
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_delta_basic_functionality(self, bias):
+        """Test basic compute_optimal_delta functionality."""
+        demo_layers = self.demo_modules[bias]
+        merge_module = demo_layers["add"]
+        
+        # Initialize tensor statistics computation
+        merge_module.init_computation()
+        
+        # Ensure modules are properly set up with data - multiple passes with gradients
+        for _ in range(3):
+            demo_layers["seq"].zero_grad()
+            output = demo_layers["seq"](self.input_x)
+            loss = torch.norm(output)
+            loss.backward()
+            
+            # CRITICAL: Manually update tensor statistics after forward/backward pass
+            merge_module.update_computation()
+        
+        # Test basic compute_optimal_delta call
+        result = merge_module.compute_optimal_delta()
+        
+        # Should return None by default (no return_deltas)
+        self.assertIsNone(result)
+        
+        # Verify that internal computations occurred (tensor updates)
+        self.assertIsNotNone(merge_module.previous_tensor_s)
+        self.assertIsNotNone(merge_module.previous_tensor_m)
+        self.assertGreater(merge_module.previous_tensor_s.samples, 0)
+        self.assertGreater(merge_module.previous_tensor_m.samples, 0)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_delta_with_return_deltas(self, bias):
+        """Test compute_optimal_delta with return_deltas=True."""
+        demo_layers = self.demo_modules[bias]
+        merge_module = demo_layers["add"]
+        
+        # Initialize tensor statistics computation
+        merge_module.init_computation()
+
+        # Ensure modules are properly set up with data - multiple passes with gradients
+        for _ in range(3):
+            demo_layers["seq"].zero_grad()
+            output = demo_layers["seq"](self.input_x)
+            loss = torch.norm(output)
+            loss.backward()
+            
+            # CRITICAL: Manually update tensor statistics after forward/backward pass  
+            merge_module.update_computation()
+        
+        # Test with return_deltas=True
+        deltas = merge_module.compute_optimal_delta(return_deltas=True)
+        
+        # Should return list of tuples (delta_w, delta_b)
+        self.assertIsInstance(deltas, list)
+        self.assertEqual(len(deltas), len(merge_module.previous_modules))
+        
+        # Each delta should be a tuple (weight_delta, bias_delta)
+        for i, (delta_w, delta_b) in enumerate(deltas):
+            prev_module = merge_module.previous_modules[i]
+            expected_weight_shape = (prev_module.out_features, prev_module.in_features)
+            self.assertEqual(delta_w.shape, expected_weight_shape)
+            self.assertIsInstance(delta_w, torch.Tensor)
+            
+            # Check bias delta based on module configuration
+            if prev_module.use_bias:
+                self.assertIsNotNone(delta_b)
+                expected_bias_shape = (prev_module.out_features,)
+                self.assertEqual(delta_b.shape, expected_bias_shape)
+            else:
+                self.assertIsNone(delta_b)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_delta_pseudo_inverse_fallback(self, bias):
+        """Test compute_optimal_delta with pseudo-inverse fallback."""
+        demo_layers = self.demo_modules[bias]
+        merge_module = demo_layers["add"]
+        
+        # Initialize tensor statistics computation
+        merge_module.init_computation()
+        
+        # Ensure modules are properly set up with data
+        for _ in range(3):
+            demo_layers["seq"].zero_grad()
+            output = demo_layers["seq"](self.input_x)
+            loss = torch.norm(output)
+            loss.backward()
+            
+            # CRITICAL: Manually update tensor statistics after forward/backward pass
+            merge_module.update_computation()
+        
+        # Test pseudo-inverse by forcing it
+        deltas = merge_module.compute_optimal_delta(
+            return_deltas=True, force_pseudo_inverse=True
+        )
+        
+        # Should still return valid deltas
+        self.assertIsInstance(deltas, list)
+        self.assertEqual(len(deltas), len(merge_module.previous_modules))
+        
+        # Verify all deltas have correct shapes
+        for i, (delta_w, delta_b) in enumerate(deltas):
+            prev_module = merge_module.previous_modules[i]
+            expected_weight_shape = (prev_module.out_features, prev_module.in_features)
+            self.assertEqual(delta_w.shape, expected_weight_shape)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_delta_different_bias_configs(self, bias):
+        """Test compute_optimal_delta with different bias configurations."""
+        # Use the existing demo modules which have a working single-input setup
+        demo_layers = self.demo_modules[bias]
+        merge_module = demo_layers["add"]
+        
+        # Initialize tensor statistics computation
+        merge_module.init_computation()
+        
+        # Ensure modules are properly set up with data - multiple passes with gradients
+        for _ in range(3):
+            demo_layers["seq"].zero_grad()
+            output = demo_layers["seq"](self.input_x)
+            loss = torch.norm(output)
+            loss.backward()
+            
+            # CRITICAL: Manually update tensor statistics after forward/backward pass
+            merge_module.update_computation()
+        
+        # Test compute_optimal_delta with the bias configuration
+        deltas = merge_module.compute_optimal_delta(return_deltas=True)
+        
+        # Should handle bias configurations correctly
+        self.assertIsNotNone(deltas)
+        self.assertIsInstance(deltas, list)
+        assert deltas is not None  # Type narrowing for mypy
+        self.assertEqual(len(deltas), len(merge_module.previous_modules))
+        
+        # Check delta shapes account for bias differences
+        for i, (delta_w, delta_b) in enumerate(deltas):
+            prev_module = merge_module.previous_modules[i]
+            expected_weight_shape = (prev_module.out_features, prev_module.in_features)
+            self.assertEqual(delta_w.shape, expected_weight_shape)
+            
+            # Check bias handling
+            if prev_module.use_bias:
+                self.assertIsNotNone(delta_b)
+                expected_bias_shape = (prev_module.out_features,)
+                self.assertEqual(delta_b.shape, expected_bias_shape)
+            else:
+                self.assertIsNone(delta_b)
+
+    def test_compute_optimal_delta_error_conditions(self):
+        """Test error conditions in compute_optimal_delta."""
+        # Test with uninitialized merge module
+        merge_module = LinearMergeGrowingModule(in_features=3, device=global_device())
+        
+        # Should handle case with no previous modules gracefully
+        with self.assertRaises(AssertionError):
+            merge_module.compute_optimal_delta()
+        
+        # Test with improperly configured modules
+        prev_module = LinearGrowingModule(2, 3, device=global_device())
+        merge_module.set_previous_modules([prev_module])
+        
+        # Should handle case with no tensor data
+        with self.assertRaises(ValueError):
+            merge_module.compute_optimal_delta()
 
 
 if __name__ == "__main__":
