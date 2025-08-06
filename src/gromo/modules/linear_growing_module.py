@@ -362,7 +362,7 @@ class LinearGrowingModule(GrowingModule):
             )
         elif isinstance(self.previous_module, MergeGrowingModule):
             return torch.func.grad(self.previous_module.post_merge_function)(
-                torch.tensor([1e-5])
+                torch.tensor(1e-5)
             )
         else:
             raise NotImplementedError(
