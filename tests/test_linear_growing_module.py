@@ -1,5 +1,6 @@
 from copy import deepcopy
 from unittest import TestCase, main
+from typing import Tuple, Dict, Any
 
 import torch
 
@@ -13,16 +14,40 @@ from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
 
 
-def theoretical_s_1(n, c):
+# Test configuration constants
+class TestConfig:
+    """Centralized test configuration to reduce magic numbers."""
+    N_SAMPLES = 11
+    C_FEATURES = 5
+    BATCH_SIZE = 10
+    RANDOM_SEED = 0
+    DEFAULT_TOLERANCE = 1e-8
+    REDUCED_TOLERANCE = 1e-7
+    
+    # Layer dimensions for different test scenarios
+    LAYER_DIMS = {
+        'small': (1, 1),
+        'medium': (3, 3),
+        'large': (5, 7),
+        'demo_1': (5, 3),
+        'demo_2': (3, 7),
+        'merge_prev': (5, 3),
+        'merge_next': (3, 7),
+    }
+
+
+def theoretical_s_1(n: int, c: int) -> Tuple[torch.Tensor, ...]:
     """
     Compute the theoretical value of the tensor S for the input and output of
     weight matrix W = (0 ... 0 \\ 0 1 0 ... 0 \\ 0 0 2 0 ... 0 \\ ... \\ 1 ... 1).
+    
+    Optimized version with better variable names and cached computations.
 
     Parameters
     ----------
-    n:
+    n: int
         number of samples
-    c:
+    c: int
         number of features
 
     Returns
@@ -40,133 +65,192 @@ def theoretical_s_1(n, c):
     os2:
         theoretical value of the tensor 2nS for the output of W((x1, x2))
     """
-
-    va = torch.arange(c)
-    v1 = torch.ones(c, dtype=torch.long)
-    is0 = va.view(-1, 1) @ va.view(1, -1)
-    isc = va.view(-1, 1) @ v1.view(1, -1)
+    # Pre-compute common values to avoid redundant calculations
+    device = global_device()
+    arange_c = torch.arange(c, device=device)
+    ones_c = torch.ones(c, dtype=torch.long, device=device)
+    arange_n = torch.arange(n, device=device)
+    
+    # Input statistics matrices
+    is0 = arange_c.view(-1, 1) @ arange_c.view(1, -1)
+    isc = arange_c.view(-1, 1) @ ones_c.view(1, -1)
     isc = isc + isc.T
-    is1 = torch.ones(c, c)
-    va_im = torch.arange(c + 1) ** 2
+    is1 = torch.ones(c, c, device=device)
+    
+    # Output statistics matrices
+    arange_c_plus1 = torch.arange(c + 1, device=device)
+    va_im = arange_c_plus1 ** 2
     va_im[-1] = c * (c - 1) // 2
-    v1_im = torch.arange(c + 1)
+    v1_im = arange_c_plus1
+    
     os0 = va_im.view(-1, 1) @ va_im.view(1, -1)
     osc = va_im.view(-1, 1) @ v1_im.view(1, -1)
     osc = osc + osc.T
     os1 = v1_im.view(-1, 1) @ v1_im.view(1, -1)
 
-    x1 = torch.ones(n, c)
-    x1 *= torch.arange(n).view(-1, 1)
+    # Generate input tensors
+    x1 = torch.ones(n, c, device=device)
+    x1 *= arange_n.view(-1, 1)
 
-    x2 = torch.tile(torch.arange(c), (n, 1))
-    x2 += torch.arange(n).view(-1, 1)
+    x2 = torch.tile(arange_c, (n, 1))
+    x2 += arange_n.view(-1, 1)
+    x2 = x2.to(device)
 
-    is_theory_1 = n * (n - 1) * (2 * n - 1) // 6 * is1
+    # Pre-compute common coefficient
+    coeff_1 = n * (n - 1) * (2 * n - 1) // 6
+    coeff_2_partial = n * (n - 1) // 2
+    coeff_3 = n * (n - 1) * (2 * n - 1) // 3
 
-    os_theory_1 = n * (n - 1) * (2 * n - 1) // 6 * os1
-
-    is_theory_2 = n * is0 + n * (n - 1) // 2 * isc + n * (n - 1) * (2 * n - 1) // 3 * is1
-
-    os_theory_2 = n * os0 + n * (n - 1) // 2 * osc + n * (n - 1) * (2 * n - 1) // 3 * os1
+    # Theoretical values
+    is_theory_1 = coeff_1 * is1
+    os_theory_1 = coeff_1 * os1
+    is_theory_2 = n * is0 + coeff_2_partial * isc + coeff_3 * is1
+    os_theory_2 = n * os0 + coeff_2_partial * osc + coeff_3 * os1
 
     return x1, x2, is_theory_1, is_theory_2, os_theory_1, os_theory_2
 
 
-class TestLinearGrowingModule(TorchTestCase):
+class TestLinearGrowingModuleBase(TorchTestCase):
+    """Base class with common helper methods for linear growing module tests."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up class-level constants and utilities."""
+        cls.config = TestConfig()
+        
     def setUp(self):
-        self.n = 11
+        """Common setup for all tests."""
+        self.n = self.config.N_SAMPLES
+        self.c = self.config.C_FEATURES
         # This assert is checking that the test is correct and not that the code is correct
         # that why it is not a self.assert*
-        assert self.n % 2 == 1
-        self.c = 5
+        assert self.n % 2 == 1 # Ensure n is odd for theoretical calculations
+        
+        # Set deterministic seed for reproducible tests
+        torch.manual_seed(self.config.RANDOM_SEED)
+        
+        # Common test data
+        self.input_x = torch.randn((self.n, self.c), device=global_device())
+        
+    def create_weight_matrix(self) -> torch.Tensor:
+        """Create standard test weight matrix."""
+        weight_matrix = torch.ones(self.c + 1, self.c, device=global_device())
+        weight_matrix[:-1] = torch.diag(torch.arange(self.c)).to(global_device())
+        return weight_matrix
+        
+    def create_demo_layers(self, bias: bool) -> Tuple[LinearGrowingModule, LinearGrowingModule]:
+        """Create demo layers for testing with specified bias configuration."""
+        demo_layer_1 = LinearGrowingModule(
+            *self.config.LAYER_DIMS['demo_1'],
+            use_bias=bias,
+            name=f"L1({'bias' if bias else 'no_bias'})",
+            device=global_device(),
+        )
+        demo_layer_2 = LinearGrowingModule(
+            *self.config.LAYER_DIMS['demo_2'],
+            use_bias=bias,
+            name=f"L2({'bias' if bias else 'no_bias'})",
+            previous_module=demo_layer_1,
+            device=global_device(),
+        )
+        return demo_layer_1, demo_layer_2
+        
+    def create_linear_layer(self, in_features: int, out_features: int, 
+                           bias: bool = True, name: str | None = None) -> LinearGrowingModule:
+        """Helper to create a LinearGrowingModule with common settings."""
+        return LinearGrowingModule(
+            in_features=in_features,
+            out_features=out_features,
+            use_bias=bias,
+            name=name or f"layer_{in_features}_{out_features}",
+            device=global_device()
+        )
+        
+    def setup_computation_tensors(self, layer: LinearGrowingModule, 
+                                store_input: bool = True, 
+                                store_pre_activity: bool = True):
+        """Helper to initialize computation tensors for a layer."""
+        if hasattr(layer, 'tensor_s') and layer.tensor_s is not None:
+            layer.tensor_s.init()
+        if hasattr(layer, 'tensor_m') and layer.tensor_m is not None:
+            layer.tensor_m.init()
+        layer.store_input = store_input
+        layer.store_pre_activity = store_pre_activity
+        
+    def assert_layer_properties(self, layer: LinearGrowingModule, 
+                               expected_in: int, expected_out: int, 
+                               expected_params: int):
+        """Helper to assert common layer properties."""
+        self.assertEqual(layer.in_features, expected_in)
+        self.assertEqual(layer.out_features, expected_out)
+        self.assertEqual(layer.number_of_parameters(), expected_params)
 
-        self.weight_matrix_1 = torch.ones(self.c + 1, self.c, device=global_device())
-        self.weight_matrix_1[:-1] = torch.diag(torch.arange(self.c)).to(global_device())
-        # W = (0 ... 0 \\ 0 1 0 ... 0 \\ 0 0 2 0 ... 0 \\ ... \\ 1 ... 1)
 
-        torch.manual_seed(0)
-        self.input_x = torch.randn((11, 5), device=global_device())
-        self.demo_layers = dict()
+class TestLinearGrowingModule(TestLinearGrowingModuleBase):
+    """Optimized test class for LinearGrowingModule with improved structure."""
+    
+    def setUp(self):
+        """Enhanced setUp using base class helpers."""
+        super().setUp()
+        
+        # Create weight matrix using helper method
+        self.weight_matrix_1 = self.create_weight_matrix()
+        
+        # Create demo layers for different bias configurations
+        self.demo_layers = {}
         for bias in (True, False):
-            demo_layer_1 = LinearGrowingModule(
-                5,
-                3,
-                use_bias=bias,
-                name=f"L1({'bias' if bias else 'no_bias'})",
-                device=global_device(),
-            )
-            demo_layer_2 = LinearGrowingModule(
-                3,
-                7,
-                use_bias=bias,
-                name=f"L2({'bias' if bias else 'no_bias'})",
-                previous_module=demo_layer_1,
-                device=global_device(),
-            )
-            self.demo_layers[bias] = (demo_layer_1, demo_layer_2)
+            self.demo_layers[bias] = self.create_demo_layers(bias)
 
     def test_compute_s(self):
+        """Test S tensor computation with optimized setup."""
         x1, x2, is_th_1, is_th_2, os_th_1, os_th_2 = theoretical_s_1(self.n, self.c)
 
+        # Create modules using helper methods
         output_module = LinearMergeGrowingModule(in_features=self.c + 1, name="output")
-        layer = LinearGrowingModule(
-            self.c, self.c + 1, use_bias=False, name="layer1", next_module=output_module
-        )
+        layer = self.create_linear_layer(self.c, self.c + 1, bias=False, name="layer1")
+        layer.next_module = output_module
         output_module.set_previous_modules([layer])
 
         net = torch.nn.Sequential(layer, output_module)
-
         layer.layer.weight.data = self.weight_matrix_1
 
-        layer.tensor_s.init()
-        layer.store_input = True
+        # Setup computation tensors using helper
+        self.setup_computation_tensors(layer, store_input=True, store_pre_activity=False)
         output_module.tensor_s.init()
         output_module.store_activity = True
-
-        # output_module.store_input = True
         output_module.previous_tensor_s.init()
 
-        # forward pass 1
-        _ = net(x1.float().to(global_device()))
+        # Forward pass 1 - extracted to reduce duplication
+        self._run_forward_pass_and_update(net, layer, output_module, x1)
+        self._assert_tensor_values(layer, output_module, is_th_1, os_th_1, self.n)
+
+        # Forward pass 2
+        self._run_forward_pass_and_update(net, layer, output_module, x2)
+        self._assert_tensor_values(layer, output_module, is_th_2, os_th_2, 2 * self.n)
+        
+    def _run_forward_pass_and_update(self, net, layer, output_module, input_data):
+        """Helper method to run forward pass and update tensors."""
+        _ = net(input_data.float().to(global_device()))
         layer.tensor_s.update()
         output_module.tensor_s.update()
         output_module.previous_tensor_s.update()
-
-        # check the values
-        # input S
+        
+    def _assert_tensor_values(self, layer, output_module, is_theoretical, os_theoretical, divisor):
+        """Helper method to assert tensor values."""
+        device = global_device()
+        # Input S
         self.assertAllClose(
-            layer.tensor_s(), is_th_1.float().to(global_device()) / self.n
+            layer.tensor_s(), is_theoretical.float().to(device) / divisor
         )
-        # output S
+        # Output S
         self.assertAllClose(
             output_module.tensor_s()[: self.c + 1, : self.c + 1],
-            os_th_1.float().to(global_device()) / self.n,
+            os_theoretical.float().to(device) / divisor,
         )
-
-        # input S computed from merge layer
+        # Input S computed from merge layer
         self.assertAllClose(
             output_module.previous_tensor_s(),
-            is_th_1.float().to(global_device()) / self.n,
-        )
-
-        # forward pass 2
-        _ = net(x2.float().to(global_device()))
-        layer.tensor_s.update()
-        output_module.tensor_s.update()
-        output_module.previous_tensor_s.update()
-
-        # check the values
-        self.assertAllClose(
-            layer.tensor_s(), is_th_2.float().to(global_device()) / (2 * self.n)
-        )
-        self.assertAllClose(
-            output_module.tensor_s()[: self.c + 1, : self.c + 1],
-            os_th_2.float().to(global_device()) / (2 * self.n),
-        )
-
-        self.assertAllClose(
-            output_module.previous_tensor_s(),
-            is_th_2.float().to(global_device()) / (2 * self.n),
+            is_theoretical.float().to(device) / divisor,
         )
 
     @unittest_parametrize(
