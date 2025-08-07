@@ -64,7 +64,7 @@ class TestGrowingModule(TorchTestCase):
             self.model.extended_forward(self.x, self.x_ext)
 
         self.model.extended_output_layer = self.layer_out_extension
-        # Use getattr to avoid direct private attribute access (CodeQL warning)
+        # Use object.__setattr__ to avoid direct private attribute access (CodeQL warning)
         object.__setattr__(self.model, "_scaling_factor_next_module", 1.0)
         y, y_sup = self.model.extended_forward(self.x)
         self.assertTrue(torch.equal(y, y_th))
