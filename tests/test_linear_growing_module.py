@@ -16,13 +16,26 @@ from tests.unittest_tools import unittest_parametrize
 
 # Test configuration constants
 class TestConfig:
-    """Centralized test configuration to reduce magic numbers and improve maintainability."""
+    """Centralized test configuration to reduce magic numbers and improve maintainability.
 
-    # Basic test parameters
-    N_SAMPLES = 11
-    C_FEATURES = 5
-    BATCH_SIZE = 10
-    RANDOM_SEED = 0
+    Constants:
+        N_SAMPLES (int): Number of samples for statistical tests - chosen as 11 to be
+                        larger than standard batch sizes but small enough for fast execution
+        C_FEATURES (int): Number of features for test tensors - chosen as 5 to provide
+                         sufficient dimensionality for matrix operations while being computationally efficient
+        BATCH_SIZE (int): Standard batch size for forward/backward pass tests
+        RANDOM_SEED (int): Seed for reproducible test results
+        TOLERANCE (float): Numerical tolerance for floating-point comparisons in tests
+    """
+
+    # Basic test parameters - carefully chosen for balance between coverage and efficiency
+    N_SAMPLES = 11  # Odd number > 10 for statistical significance in tensor operations
+    C_FEATURES = (
+        5  # Small prime number for diverse matrix shapes and efficient computation
+    )
+    BATCH_SIZE = 10  # Standard batch size for neural network operations
+    RANDOM_SEED = 0  # Deterministic seed for reproducible results
+    TOLERANCE = 1e-6  # Standard numerical tolerance for tensor comparisons
 
     # Tolerance levels for different precision requirements
     DEFAULT_TOLERANCE = 1e-8
