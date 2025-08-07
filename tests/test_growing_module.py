@@ -1,10 +1,13 @@
-from unittest import TestCase, main
 import warnings
+from unittest import TestCase, main
 
 import torch
 
 from gromo.modules.growing_module import GrowingModule, MergeGrowingModule
-from gromo.modules.linear_growing_module import LinearMergeGrowingModule, LinearGrowingModule
+from gromo.modules.linear_growing_module import (
+    LinearGrowingModule,
+    LinearMergeGrowingModule,
+)
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
@@ -210,39 +213,37 @@ class TestGrowingModule(TorchTestCase):
 
 class TestMergeGrowingModule(TorchTestCase):
     """Test MergeGrowingModule base class functionality to cover missing lines."""
-    
+
     def setUp(self):
         torch.manual_seed(0)
         # Use LinearMergeGrowingModule as a concrete implementation
         self.merge_module = LinearMergeGrowingModule(
-            in_features=3,
-            device=global_device(),
-            name="test_merge"
+            in_features=3, device=global_device(), name="test_merge"
         )
-        
+
         # Create some mock modules for testing with matching dimensions
         # For previous modules: their out_features must match merge_module's in_features (3)
         # For next modules: their in_features must match merge_module's out_features (3)
         self.mock_module1 = LinearGrowingModule(
             in_features=3,  # For use as next module: must match merge_module's out_features (3)
             out_features=5,
-            device=global_device()
+            device=global_device(),
         )
         self.mock_module2 = LinearGrowingModule(
             in_features=5,
             out_features=3,  # For use as previous module: must match merge_module's in_features (3)
-            device=global_device()
+            device=global_device(),
         )
 
     def test_number_of_successors(self):
         """Test number_of_successors property (line 68)."""
         # Initially no successors
         self.assertEqual(self.merge_module.number_of_successors, 0)
-        
+
         # Add a successor
         self.merge_module.next_modules = [self.mock_module1]
         self.assertEqual(self.merge_module.number_of_successors, 1)
-        
+
         # Add another successor
         self.merge_module.next_modules.append(self.mock_module2)
         self.assertEqual(self.merge_module.number_of_successors, 2)
@@ -251,11 +252,11 @@ class TestMergeGrowingModule(TorchTestCase):
         """Test number_of_predecessors property (line 72)."""
         # Initially no predecessors
         self.assertEqual(self.merge_module.number_of_predecessors, 0)
-        
+
         # Add a predecessor
         self.merge_module.previous_modules = [self.mock_module1]
         self.assertEqual(self.merge_module.number_of_predecessors, 1)
-        
+
         # Add another predecessor
         self.merge_module.previous_modules.append(self.mock_module2)
         self.assertEqual(self.merge_module.number_of_predecessors, 2)
@@ -263,12 +264,16 @@ class TestMergeGrowingModule(TorchTestCase):
     def test_grow_method(self):
         """Test grow() method implementation (lines 79-80)."""
         # Set up some modules with proper dimensions
-        self.merge_module.next_modules = [self.mock_module1]  # mock_module1 has in_features=3
-        self.merge_module.previous_modules = [self.mock_module2]  # mock_module2 has out_features=3
-        
+        self.merge_module.next_modules = [
+            self.mock_module1
+        ]  # mock_module1 has in_features=3
+        self.merge_module.previous_modules = [
+            self.mock_module2
+        ]  # mock_module2 has out_features=3
+
         # Call grow - this should call set_next_modules and set_previous_modules
         self.merge_module.grow()
-        
+
         # If we reach here, the method executed successfully
         self.assertTrue(True)
 
@@ -276,10 +281,10 @@ class TestMergeGrowingModule(TorchTestCase):
         """Test add_next_module() method (lines 91-94)."""
         # Initially empty
         self.assertEqual(len(self.merge_module.next_modules), 0)
-        
+
         # Add a module - mock_module1 has in_features=3 which matches merge_module's out_features=3
         self.merge_module.add_next_module(self.mock_module1)
-        
+
         # Verify module was added
         self.assertEqual(len(self.merge_module.next_modules), 1)
         self.assertEqual(self.merge_module.next_modules[0], self.mock_module1)
@@ -288,10 +293,10 @@ class TestMergeGrowingModule(TorchTestCase):
         """Test add_previous_module() method (lines 105-106)."""
         # Initially empty
         self.assertEqual(len(self.merge_module.previous_modules), 0)
-        
+
         # Add a module - mock_module2 has out_features=3 which matches merge_module's in_features=3
         self.merge_module.add_previous_module(self.mock_module2)
-        
+
         # Verify module was added
         self.assertEqual(len(self.merge_module.previous_modules), 1)
         self.assertEqual(self.merge_module.previous_modules[0], self.mock_module2)
@@ -299,15 +304,12 @@ class TestMergeGrowingModule(TorchTestCase):
 
 class TestGrowingModuleEdgeCases(TorchTestCase):
     """Test edge cases and error conditions in GrowingModule to improve coverage."""
-    
+
     def setUp(self):
         torch.manual_seed(0)
         self.layer = torch.nn.Linear(3, 5, bias=False, device=global_device())
         self.model = GrowingModule(
-            self.layer, 
-            tensor_s_shape=(3, 3), 
-            tensor_m_shape=(3, 5), 
-            allow_growing=False
+            self.layer, tensor_s_shape=(3, 3), tensor_m_shape=(3, 5), allow_growing=False
         )
 
     def test_number_of_parameters_property(self):
@@ -324,27 +326,27 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
     def test_scaling_factor_item_conversion(self):
         """Test scaling_factor.item() call in update_scaling_factor (line 377)."""
         merge_module = LinearMergeGrowingModule(in_features=3, device=global_device())
-        
+
         # Create modules with correct dimensions
         next_module = LinearGrowingModule(
             in_features=3,  # Must match merge_module's out_features (3)
             out_features=5,
-            device=global_device()
+            device=global_device(),
         )
         prev_module = LinearGrowingModule(
             in_features=5,
             out_features=3,  # Must match merge_module's in_features (3)
-            device=global_device()
+            device=global_device(),
         )
-        
+
         # Set up the connection properly
         merge_module.add_previous_module(prev_module)
         merge_module.add_next_module(next_module)
-        
+
         # Test with tensor scaling factor
         scaling_tensor = torch.tensor(2.0, device=global_device())
         merge_module.update_scaling_factor(scaling_tensor)
-        
+
         # Verify the item() conversion worked
         self.assertEqual(prev_module._scaling_factor_next_module.item(), 2.0)
 
@@ -354,11 +356,11 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         self.model.store_pre_activity = False
         self.model._internal_store_pre_activity = False
         self.model.next_module = None
-        
+
         # Try to access pre_activity
         with self.assertRaises(ValueError) as context:
             _ = self.model.pre_activity
-        
+
         self.assertEqual(str(context.exception), "The pre-activity is not stored.")
 
     def test_compute_optimal_delta_warnings(self):
@@ -366,7 +368,7 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         # This test is challenging to implement without complex setup
         # For now, just ensure the method can be called
         self.model.allow_growing = True
-        
+
         # Test that the method exists and can be called
         try:
             # Call without proper setup to potentially trigger some paths
@@ -374,7 +376,7 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         except (AssertionError, ValueError, RuntimeError):
             # These are expected for incomplete setup
             pass
-        
+
         # This ensures the method is executed and the coverage lines are hit
         self.assertTrue(True)  # Test passes if we reach here
 
@@ -382,15 +384,15 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
         """Test isinstance check for MergeGrowingModule (line 1163)."""
         # Create a merge module as previous module
         merge_module = LinearMergeGrowingModule(in_features=5, device=global_device())
-        
+
         # Create a growing module with merge as previous
         growing_module = LinearGrowingModule(
             in_features=5,
             out_features=5,
             device=global_device(),
-            previous_module=merge_module
+            previous_module=merge_module,
         )
-        
+
         # Test that the isinstance check works
         self.assertIsInstance(growing_module.previous_module, MergeGrowingModule)
 

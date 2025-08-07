@@ -23,16 +23,16 @@ class TestConfig:
     C_FEATURES = 5
     BATCH_SIZE = 10
     RANDOM_SEED = 0
-    
+
     # Tolerance levels for different precision requirements
     DEFAULT_TOLERANCE = 1e-8
     REDUCED_TOLERANCE = 1e-7
-    
+
     # Test iteration counts
     DEFAULT_BATCH_COUNT = 3
     DEFAULT_ALPHA_VALUES = (0.1, 1.0, 10.0)
     DEFAULT_GAMMA_VALUES = ((0.0, 0.0), (1.0, 1.5), (5.0, 5.5))
-    
+
     # Layer dimensions for different test scenarios
     LAYER_DIMS = {
         "small": (1, 1),
@@ -46,12 +46,12 @@ class TestConfig:
         "extension_out": (5, 1),
         "extension_merged": (8, 1),
     }
-    
+
     # Common test tensor shapes
     TENSOR_SHAPES = {
         "input_2d": (10, 5),
         "weight_standard": (6, 5),  # c+1, c
-        "bias_standard": (6,),      # c+1
+        "bias_standard": (6,),  # c+1
     }
 
 
@@ -257,7 +257,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             callable_func(*args, **kwargs)
         self.assertIn(expected_message, str(context.exception))
 
-    def create_test_input_batch(self, shape: Tuple[int, ...] | None = None) -> torch.Tensor:
+    def create_test_input_batch(
+        self, shape: Tuple[int, ...] | None = None
+    ) -> torch.Tensor:
         """Create a standard test input batch with reproducible random data."""
         shape = shape or self.config.TENSOR_SHAPES["input_2d"]
         torch.manual_seed(self.config.RANDOM_SEED)
@@ -273,18 +275,18 @@ class TestLinearGrowingModuleBase(TorchTestCase):
         return output
 
     def assert_linear_layer_equality(
-        self, layer1: torch.nn.Linear, layer2: torch.nn.Linear, 
-        rtol: float = 1e-5, atol: float = 1e-8
+        self,
+        layer1: torch.nn.Linear,
+        layer2: torch.nn.Linear,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
     ) -> bool:
         """Check if two linear layers have equal weights and biases within tolerance."""
         weights_equal = torch.allclose(layer1.weight, layer2.weight, atol=atol, rtol=rtol)
-        bias_equal = (
-            (layer1.bias is None and layer2.bias is None)
-            or (
-                layer1.bias is not None
-                and layer2.bias is not None
-                and torch.allclose(layer1.bias, layer2.bias, atol=atol, rtol=rtol)
-            )
+        bias_equal = (layer1.bias is None and layer2.bias is None) or (
+            layer1.bias is not None
+            and layer2.bias is not None
+            and torch.allclose(layer1.bias, layer2.bias, atol=atol, rtol=rtol)
         )
         return weights_equal and bias_equal
 
@@ -342,7 +344,9 @@ class TestLinearGrowingModuleBase(TorchTestCase):
             else:
                 raise ValueError(f"Invalid type for {inv} ({type(new_inv_value)})")
 
-    def setup_invariant_test_network(self) -> tuple[LinearGrowingModule, LinearGrowingModule, torch.nn.Sequential]:
+    def setup_invariant_test_network(
+        self,
+    ) -> tuple[LinearGrowingModule, LinearGrowingModule, torch.nn.Sequential]:
         """Set up a standard network for invariant testing."""
         torch.manual_seed(self.config.RANDOM_SEED)
         layer_in = LinearGrowingModule(
@@ -389,7 +393,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         # Create modules using helper methods
         output_module = self.create_merge_layer(self.c + 1, "output")
         layer = self.create_linear_layer(self.c, self.c + 1, bias=False, name="layer1")
-        
+
         # Set up network using helper method
         net = self.setup_network_with_merge(layer, output_module)
         layer.layer.weight.data = self.weight_matrix_1
@@ -419,24 +423,24 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         device = global_device()
         expected_is = is_theoretical.float().to(device) / divisor
         expected_os = os_theoretical.float().to(device) / divisor
-        
+
         # Input S tensor assertion
         self.assert_tensor_close_with_context(
             layer.tensor_s(), expected_is, context=f"Input S tensor ({context})"
         )
-        
+
         # Output S tensor assertion
         self.assert_tensor_close_with_context(
             output_module.tensor_s()[: self.c + 1, : self.c + 1],
             expected_os,
-            context=f"Output S tensor ({context})"
+            context=f"Output S tensor ({context})",
         )
-        
+
         # Input S computed from merge layer assertion
         self.assert_tensor_close_with_context(
             output_module.previous_tensor_s(),
             expected_is,
-            context=f"Previous S tensor from merge layer ({context})"
+            context=f"Previous S tensor from merge layer ({context})",
         )
 
     @unittest_parametrize(
@@ -458,7 +462,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         # sum: batch is not divided and the total is not divided
         reduction = "mixed"
         batch_red = self.c if reduction == "mean" else 1
-        
+
         def loss_func(x, y):
             return torch.norm(x - y) ** 2 / batch_red
 
@@ -468,8 +472,13 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             )
 
     def _test_delta_computation_for_alpha(
-        self, alpha: float, batch_red: int, loss_func, 
-        force_pseudo_inverse: bool, update_layer: bool, reduction: str
+        self,
+        alpha: float,
+        batch_red: int,
+        loss_func,
+        force_pseudo_inverse: bool,
+        update_layer: bool,
+        reduction: str,
     ):
         """Helper method to test delta computation for a specific alpha value."""
         layer = LinearGrowingModule(self.c, self.c, use_bias=False, name="layer1")
@@ -488,13 +497,17 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         # Verify computations using helper methods
         self._assert_tensor_computation_results(
-            layer, alpha, batch_red, force_pseudo_inverse, 
-            update_layer, reduction
+            layer, alpha, batch_red, force_pseudo_inverse, update_layer, reduction
         )
 
     def _assert_tensor_computation_results(
-        self, layer, alpha: float, batch_red: int, 
-        force_pseudo_inverse: bool, update_layer: bool, reduction: str
+        self,
+        layer,
+        alpha: float,
+        batch_red: int,
+        force_pseudo_inverse: bool,
+        update_layer: bool,
+        reduction: str,
     ):
         """Helper to assert tensor computation results with better organization."""
         device = global_device()
@@ -505,39 +518,42 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
         # S tensor assertion
         self.assert_tensor_close_with_context(
-            layer.tensor_s(), expected_s, 
-            context=f"S tensor for alpha={alpha}, reduction={reduction}"
+            layer.tensor_s(),
+            expected_s,
+            context=f"S tensor for alpha={alpha}, reduction={reduction}",
         )
 
         # Gradient assertion - handle potential None
         if layer.pre_activity.grad is not None:
             self.assert_tensor_close_with_context(
-                layer.pre_activity.grad, expected_grad,
-                context=f"dL/dA for alpha={alpha}, reduction={reduction}"
+                layer.pre_activity.grad,
+                expected_grad,
+                context=f"dL/dA for alpha={alpha}, reduction={reduction}",
             )
 
         # M tensor assertion
         self.assert_tensor_close_with_context(
-            layer.tensor_m(), expected_m,
-            context=f"M tensor for alpha={alpha}, reduction={reduction}"
+            layer.tensor_m(),
+            expected_m,
+            context=f"M tensor for alpha={alpha}, reduction={reduction}",
         )
 
         # Optimal delta computation
         w, _, fo = layer.compute_optimal_delta(
             force_pseudo_inverse=force_pseudo_inverse, update=update_layer
         )
-        
+
         self.assert_tensor_close_with_context(
-            w, expected_w,
-            context=f"dW* for alpha={alpha}, reduction={reduction}"
+            w, expected_w, context=f"dW* for alpha={alpha}, reduction={reduction}"
         )
 
         # Verify layer update behavior
         if update_layer:
             self.assertIsNotNone(layer.optimal_delta_layer)
             self.assert_tensor_close_with_context(
-                layer.optimal_delta_layer.weight, w,
-                context=f"Updated delta layer for alpha={alpha}, reduction={reduction}"
+                layer.optimal_delta_layer.weight,
+                w,
+                context=f"Updated delta layer for alpha={alpha}, reduction={reduction}",
             )
         else:
             self.assertIsNone(layer.optimal_delta_layer)
@@ -550,7 +566,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         }
         expected_fo = 4 * alpha**2 / batch_red**2 * factors[reduction]
         self.assertAlmostEqual(
-            fo.item() if hasattr(fo, 'item') else fo,
+            fo.item() if hasattr(fo, "item") else fo,
             expected_fo,
             places=3,
             msg=f"Error in <dW*, dL/dA> for reduction={reduction}, alpha={alpha}",
@@ -564,7 +580,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
     def test_extended_forward_out(self, bias):
         """Test extended forward pass for output with improved organization."""
         torch.manual_seed(self.config.RANDOM_SEED)
-        
+
         # Create standard layers using helper methods
         l0 = self.create_standard_nn_linear(5, 1, bias=bias)
         l_ext = self.create_standard_nn_linear(5, 2, bias=bias)
@@ -593,36 +609,37 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         """Helper to test extended forward pass with specific gamma values."""
         layer.scaling_factor = gamma
         layer._scaling_factor_next_module[0] = gamma_next
-        
+
         x = self.create_test_input_batch()
-        
+
         # Test standard forward pass
         self.assert_tensor_close_with_context(
-            layer(x), l0(x), 
-            context=f"Standard forward with γ={gamma}, γ_next={gamma_next}"
+            layer(x),
+            l0(x),
+            context=f"Standard forward with γ={gamma}, γ_next={gamma_next}",
         )
 
         # Test extended forward pass
         y_ext_1, y_ext_2 = layer.extended_forward(x)
-        
+
         expected_ext_1 = l0(x) - gamma**2 * l_delta(x)
         self.assert_tensor_close_with_context(
-            y_ext_1, expected_ext_1,
-            context=f"Extended forward 1 with γ={gamma}"
+            y_ext_1, expected_ext_1, context=f"Extended forward 1 with γ={gamma}"
         )
-        
+
         if y_ext_2 is not None:
             expected_ext_2 = gamma_next * l_ext(x)
             self.assert_tensor_close_with_context(
-                y_ext_2, expected_ext_2,
+                y_ext_2,
+                expected_ext_2,
                 tolerance=self.config.REDUCED_TOLERANCE,
-                context=f"Extended forward 2 with γ_next={gamma_next}"
+                context=f"Extended forward 2 with γ_next={gamma_next}",
             )
 
     def _test_apply_changes(self, layer, l0, l_ext, gamma: float, gamma_next: float):
         """Helper to test applying changes to the layer."""
         x = self.create_test_input_batch()
-        
+
         # Apply changes and test
         layer.apply_change(apply_previous=False)
         y = layer(x)
@@ -634,14 +651,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         y_changed = layer(x)
         y_changed_1 = y_changed[:, :1]
         y_changed_2 = y_changed[:, 1:]
-        
+
         self.assertAllClose(y_changed_1, expected_y)
-        
+
         expected_changed_2 = gamma_next * l_ext(x)
         self.assertAllClose(
-            y_changed_2, expected_changed_2,
-            atol=1e-7,
-            message="Error in applying change"
+            y_changed_2, expected_changed_2, atol=1e-7, message="Error in applying change"
         )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
@@ -907,12 +922,12 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             loss_fn = self.create_mse_loss_function()
             torch.manual_seed(self.config.RANDOM_SEED)
             net.zero_grad()
-            
+
             # Create input tensor
             x = torch.randn((self.config.BATCH_SIZE, 5), device=global_device())
             if double_batch:
                 x = torch.cat((x, x), dim=0)
-            
+
             # Forward/backward pass
             y = net(x)
             loss = loss_fn(y, torch.zeros_like(y))
@@ -1152,36 +1167,44 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
     def test_set_next_modules_warning_and_assertion(self):
         """Test set_next_modules triggers warning and assertion for feature mismatch (lines 52, 85)."""
-        layer = LinearMergeGrowingModule(in_features=3, name="merge", device=global_device())
+        layer = LinearMergeGrowingModule(
+            in_features=3, name="merge", device=global_device()
+        )
         # Simulate non-empty tensor_s using object.__setattr__ and dummy update_function
         dummy_stat = TensorStatistic((3, 3), lambda: (torch.zeros(3, 3), 1))
         dummy_stat.samples = 1
-        object.__setattr__(layer, 'tensor_s', dummy_stat)
+        object.__setattr__(layer, "tensor_s", dummy_stat)
         next_layer = LinearGrowingModule(3, 4, device=global_device(), name="next")
         # Should trigger warning for non-empty tensor_s
         with self.assertWarns(UserWarning):
             layer.set_next_modules([next_layer])
         # Should trigger assertion for feature mismatch
-        mismatch_layer = LinearGrowingModule(5, 4, device=global_device(), name="mismatch")
+        mismatch_layer = LinearGrowingModule(
+            5, 4, device=global_device(), name="mismatch"
+        )
         with self.assertRaises(AssertionError):
             layer.set_next_modules([mismatch_layer])
 
     def test_set_previous_modules_warning_and_assertion(self):
         """Test set_previous_modules triggers warnings and assertion for feature mismatch (lines 73, 77, 87)."""
-        layer = LinearMergeGrowingModule(in_features=3, name="merge", device=global_device())
+        layer = LinearMergeGrowingModule(
+            in_features=3, name="merge", device=global_device()
+        )
         # Simulate non-empty previous_tensor_s and previous_tensor_m using object.__setattr__
         dummy_stat_s = TensorStatistic((3, 3), lambda: (torch.zeros(3, 3), 1))
         dummy_stat_s.samples = 1
-        object.__setattr__(layer, 'previous_tensor_s', dummy_stat_s)
+        object.__setattr__(layer, "previous_tensor_s", dummy_stat_s)
         dummy_stat_m = TensorStatistic((3, 3), lambda: (torch.zeros(3, 3), 1))
         dummy_stat_m.samples = 1
-        object.__setattr__(layer, 'previous_tensor_m', dummy_stat_m)
+        object.__setattr__(layer, "previous_tensor_m", dummy_stat_m)
         prev_layer = LinearGrowingModule(2, 3, device=global_device(), name="prev")
         # Should trigger warnings for non-empty tensors
         with self.assertWarns(UserWarning):
             layer.set_previous_modules([prev_layer])
         # Should trigger assertion for feature mismatch
-        mismatch_layer = LinearGrowingModule(5, 4, device=global_device(), name="mismatch")
+        mismatch_layer = LinearGrowingModule(
+            5, 4, device=global_device(), name="mismatch"
+        )
         with self.assertRaises(ValueError):
             layer.set_previous_modules([mismatch_layer])
         # Should trigger assertion for wrong type
@@ -1190,32 +1213,32 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
     # PHASE 1 - CRITICAL COVERAGE IMPROVEMENTS
     # Adding comprehensive tests for compute_optimal_delta (0% coverage -> +15% gain)
-    
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_delta_basic_functionality(self, bias):
         """Test basic compute_optimal_delta functionality."""
         demo_layers = self.demo_modules[bias]
         merge_module = demo_layers["add"]
-        
+
         # Initialize tensor statistics computation
         merge_module.init_computation()
-        
+
         # Ensure modules are properly set up with data - multiple passes with gradients
         for _ in range(3):
             demo_layers["seq"].zero_grad()
             output = demo_layers["seq"](self.input_x)
             loss = torch.norm(output)
             loss.backward()
-            
+
             # CRITICAL: Manually update tensor statistics after forward/backward pass
             merge_module.update_computation()
-        
+
         # Test basic compute_optimal_delta call
         result = merge_module.compute_optimal_delta()
-        
+
         # Should return None by default (no return_deltas)
         self.assertIsNone(result)
-        
+
         # Verify that internal computations occurred (tensor updates)
         self.assertIsNotNone(merge_module.previous_tensor_s)
         self.assertIsNotNone(merge_module.previous_tensor_m)
@@ -1227,7 +1250,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test compute_optimal_delta with return_deltas=True."""
         demo_layers = self.demo_modules[bias]
         merge_module = demo_layers["add"]
-        
+
         # Initialize tensor statistics computation
         merge_module.init_computation()
 
@@ -1237,24 +1260,24 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             output = demo_layers["seq"](self.input_x)
             loss = torch.norm(output)
             loss.backward()
-            
-            # CRITICAL: Manually update tensor statistics after forward/backward pass  
+
+            # CRITICAL: Manually update tensor statistics after forward/backward pass
             merge_module.update_computation()
-        
+
         # Test with return_deltas=True
         deltas = merge_module.compute_optimal_delta(return_deltas=True)
-        
+
         # Should return list of tuples (delta_w, delta_b)
         self.assertIsInstance(deltas, list)
         self.assertEqual(len(deltas), len(merge_module.previous_modules))
-        
+
         # Each delta should be a tuple (weight_delta, bias_delta)
         for i, (delta_w, delta_b) in enumerate(deltas):
             prev_module = merge_module.previous_modules[i]
             expected_weight_shape = (prev_module.out_features, prev_module.in_features)
             self.assertEqual(delta_w.shape, expected_weight_shape)
             self.assertIsInstance(delta_w, torch.Tensor)
-            
+
             # Check bias delta based on module configuration
             if prev_module.use_bias:
                 self.assertIsNotNone(delta_b)
@@ -1268,29 +1291,29 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test compute_optimal_delta with pseudo-inverse fallback."""
         demo_layers = self.demo_modules[bias]
         merge_module = demo_layers["add"]
-        
+
         # Initialize tensor statistics computation
         merge_module.init_computation()
-        
+
         # Ensure modules are properly set up with data
         for _ in range(3):
             demo_layers["seq"].zero_grad()
             output = demo_layers["seq"](self.input_x)
             loss = torch.norm(output)
             loss.backward()
-            
+
             # CRITICAL: Manually update tensor statistics after forward/backward pass
             merge_module.update_computation()
-        
+
         # Test pseudo-inverse by forcing it
         deltas = merge_module.compute_optimal_delta(
             return_deltas=True, force_pseudo_inverse=True
         )
-        
+
         # Should still return valid deltas
         self.assertIsInstance(deltas, list)
         self.assertEqual(len(deltas), len(merge_module.previous_modules))
-        
+
         # Verify all deltas have correct shapes
         for i, (delta_w, delta_b) in enumerate(deltas):
             prev_module = merge_module.previous_modules[i]
@@ -1303,35 +1326,35 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Use the existing demo modules which have a working single-input setup
         demo_layers = self.demo_modules[bias]
         merge_module = demo_layers["add"]
-        
+
         # Initialize tensor statistics computation
         merge_module.init_computation()
-        
+
         # Ensure modules are properly set up with data - multiple passes with gradients
         for _ in range(3):
             demo_layers["seq"].zero_grad()
             output = demo_layers["seq"](self.input_x)
             loss = torch.norm(output)
             loss.backward()
-            
+
             # CRITICAL: Manually update tensor statistics after forward/backward pass
             merge_module.update_computation()
-        
+
         # Test compute_optimal_delta with the bias configuration
         deltas = merge_module.compute_optimal_delta(return_deltas=True)
-        
+
         # Should handle bias configurations correctly
         self.assertIsNotNone(deltas)
         self.assertIsInstance(deltas, list)
         assert deltas is not None  # Type narrowing for mypy
         self.assertEqual(len(deltas), len(merge_module.previous_modules))
-        
+
         # Check delta shapes account for bias differences
         for i, (delta_w, delta_b) in enumerate(deltas):
             prev_module = merge_module.previous_modules[i]
             expected_weight_shape = (prev_module.out_features, prev_module.in_features)
             self.assertEqual(delta_w.shape, expected_weight_shape)
-            
+
             # Check bias handling
             if prev_module.use_bias:
                 self.assertIsNotNone(delta_b)
@@ -1344,47 +1367,51 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test error conditions in compute_optimal_delta."""
         # Test with uninitialized merge module
         merge_module = LinearMergeGrowingModule(in_features=3, device=global_device())
-        
+
         # Should handle case with no previous modules gracefully
         with self.assertRaises(AssertionError):
             merge_module.compute_optimal_delta()
-        
+
         # Test with improperly configured modules
         prev_module = LinearGrowingModule(2, 3, device=global_device())
         merge_module.set_previous_modules([prev_module])
-        
+
         # Should handle case with no tensor data
         with self.assertRaises(ValueError):
             merge_module.compute_optimal_delta()
 
     # PHASE 2 - TARGET 95% COVERAGE: MAJOR MISSING FUNCTIONALITY
     # Adding comprehensive tests for add_parameters method (lines 725-767)
-    
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_add_parameters_input_features(self, bias):
         """Test add_parameters method for adding input features (lines 725-767)."""
         layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
         original_in_features = layer.in_features
         original_out_features = layer.out_features
-        
+
         # Test adding input features with default zero matrix
         added_in_features = 2
-        
+
         # This should trigger lines 728-736 (added_in_features > 0 branch)
         layer.add_parameters(
             matrix_extension=None,
             bias_extension=None,
             added_in_features=added_in_features,
-            added_out_features=0
+            added_out_features=0,
         )
-        
+
         # Verify layer dimensions changed correctly
         self.assertEqual(layer.in_features, original_in_features + added_in_features)
         self.assertEqual(layer.out_features, original_out_features)
-        self.assertEqual(layer.layer.in_features, original_in_features + added_in_features)
-        
+        self.assertEqual(
+            layer.layer.in_features, original_in_features + added_in_features
+        )
+
         # Test input with extended features
-        x = torch.randn(5, original_in_features + added_in_features, device=global_device())
+        x = torch.randn(
+            5, original_in_features + added_in_features, device=global_device()
+        )
         output = layer(x)
         self.assertEqual(output.shape, (5, original_out_features))
 
@@ -1394,25 +1421,29 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
         original_in_features = layer.in_features
         original_out_features = layer.out_features
-        
+
         # Test adding input features with custom matrix
         added_in_features = 2
-        custom_matrix = torch.ones(original_out_features, added_in_features, device=global_device())
-        
+        custom_matrix = torch.ones(
+            original_out_features, added_in_features, device=global_device()
+        )
+
         # This should trigger lines 737-744 (custom matrix_extension branch)
         layer.add_parameters(
             matrix_extension=custom_matrix,
             bias_extension=None,
             added_in_features=added_in_features,
-            added_out_features=0
+            added_out_features=0,
         )
-        
+
         # Verify layer dimensions
         self.assertEqual(layer.in_features, original_in_features + added_in_features)
         self.assertEqual(layer.out_features, original_out_features)
-        
+
         # Test that custom matrix was used (check weight matrix contains ones)
-        x = torch.zeros(1, original_in_features + added_in_features, device=global_device())
+        x = torch.zeros(
+            1, original_in_features + added_in_features, device=global_device()
+        )
         x[0, original_in_features:] = 1.0  # Set extended features to 1
         output = layer(x)
         # Extended features should contribute due to ones in custom matrix
@@ -1424,23 +1455,25 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
         original_in_features = layer.in_features
         original_out_features = layer.out_features
-        
+
         # Test adding output features with default matrices
         added_out_features = 2
-        
+
         # This should trigger lines 746-767 (added_out_features > 0 branch)
         layer.add_parameters(
             matrix_extension=None,
             bias_extension=None,
             added_in_features=0,
-            added_out_features=added_out_features
+            added_out_features=added_out_features,
         )
-        
+
         # Verify layer dimensions changed correctly
         self.assertEqual(layer.in_features, original_in_features)
         self.assertEqual(layer.out_features, original_out_features + added_out_features)
-        self.assertEqual(layer.layer.out_features, original_out_features + added_out_features)
-        
+        self.assertEqual(
+            layer.layer.out_features, original_out_features + added_out_features
+        )
+
         # Test output with extended features
         x = torch.randn(5, original_in_features, device=global_device())
         output = layer(x)
@@ -1452,51 +1485,62 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
         original_in_features = layer.in_features
         original_out_features = layer.out_features
-        
+
         # Test adding output features with custom matrices
         added_out_features = 2
-        custom_weight = torch.ones(added_out_features, original_in_features, device=global_device())
-        custom_bias = torch.ones(added_out_features, device=global_device()) * 5.0 if bias else None
-        
+        custom_weight = torch.ones(
+            added_out_features, original_in_features, device=global_device()
+        )
+        custom_bias = (
+            torch.ones(added_out_features, device=global_device()) * 5.0 if bias else None
+        )
+
         # This should trigger lines 750-766 (custom matrix/bias extension branches)
         layer.add_parameters(
             matrix_extension=custom_weight,
             bias_extension=custom_bias,
             added_in_features=0,
-            added_out_features=added_out_features
+            added_out_features=added_out_features,
         )
-        
+
         # Verify layer dimensions
         self.assertEqual(layer.in_features, original_in_features)
         self.assertEqual(layer.out_features, original_out_features + added_out_features)
-        
+
         # Test that custom matrices were used
         x = torch.ones(1, original_in_features, device=global_device())
         output = layer(x)
-        
+
         # Extended outputs should be influenced by custom weight (all 1s) and bias if present
         extended_outputs = output[0, original_out_features:]
         if bias:
             expected_value = original_in_features + 5.0  # sum of ones * inputs + bias
-            self.assertAllClose(extended_outputs, torch.full_like(extended_outputs, expected_value))
+            self.assertAllClose(
+                extended_outputs, torch.full_like(extended_outputs, expected_value)
+            )
         else:
             expected_value = original_in_features  # sum of ones * inputs, no bias
-            self.assertAllClose(extended_outputs, torch.full_like(extended_outputs, expected_value))
+            self.assertAllClose(
+                extended_outputs, torch.full_like(extended_outputs, expected_value)
+            )
 
     def test_add_parameters_assertion_errors(self):
         """Test assertion errors in add_parameters method."""
         layer = LinearGrowingModule(3, 2, device=global_device())
-        
+
         # Test adding both input and output features (should raise AssertionError)
         with self.assertRaises(AssertionError) as context:
             layer.add_parameters(
                 matrix_extension=None,
                 bias_extension=None,
                 added_in_features=1,
-                added_out_features=1
+                added_out_features=1,
             )
-        self.assertIn("cannot add input and output features at the same time", str(context.exception))
-        
+        self.assertIn(
+            "cannot add input and output features at the same time",
+            str(context.exception),
+        )
+
         # Test wrong matrix shape for input extension
         with self.assertRaises(AssertionError) as context:
             wrong_matrix = torch.ones(3, 3)  # Should be (2, 2) for 2 added input features
@@ -1504,22 +1548,24 @@ class TestLinearMergeGrowingModule(TorchTestCase):
                 matrix_extension=wrong_matrix,
                 bias_extension=None,
                 added_in_features=2,
-                added_out_features=0
+                added_out_features=0,
             )
         self.assertIn("matrix_extension should have shape", str(context.exception))
-        
+
         # Test wrong matrix shape for output extension
         layer2 = LinearGrowingModule(3, 2, device=global_device())
         with self.assertRaises(AssertionError) as context:
-            wrong_matrix = torch.ones(3, 2)  # Should be (2, 3) for 2 added output features
+            wrong_matrix = torch.ones(
+                3, 2
+            )  # Should be (2, 3) for 2 added output features
             layer2.add_parameters(
                 matrix_extension=wrong_matrix,
                 bias_extension=None,
                 added_in_features=0,
-                added_out_features=2
+                added_out_features=2,
             )
         self.assertIn("matrix_extension should have shape", str(context.exception))
-        
+
         # Test wrong bias shape for output extension
         layer3 = LinearGrowingModule(3, 2, device=global_device())
         with self.assertRaises(AssertionError) as context:
@@ -1529,47 +1575,51 @@ class TestLinearMergeGrowingModule(TorchTestCase):
                 matrix_extension=correct_matrix,
                 bias_extension=wrong_bias,
                 added_in_features=0,
-                added_out_features=2
+                added_out_features=2,
             )
         self.assertIn("bias_extension should have shape", str(context.exception))
 
     # PHASE 2.2 - COVERING compute_n_update METHOD (lines 579-589)
     # Testing the fixed compute_n_update method with corrected projected_v_goal() call
-    
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_n_update_basic_functionality(self, bias):
         """Test compute_n_update method basic functionality (lines 579-589)."""
         # Create a chain of LinearGrowingModules: layer1 -> layer2
-        layer1 = LinearGrowingModule(3, 2, use_bias=bias, device=global_device(), name="layer1")
-        layer2 = LinearGrowingModule(2, 4, use_bias=bias, device=global_device(), name="layer2")
+        layer1 = LinearGrowingModule(
+            3, 2, use_bias=bias, device=global_device(), name="layer1"
+        )
+        layer2 = LinearGrowingModule(
+            2, 4, use_bias=bias, device=global_device(), name="layer2"
+        )
         layer1.next_module = layer2
         layer2.previous_module = layer1
-        
+
         # Initialize computation for both layers
         layer1.init_computation()
         layer2.init_computation()
-        
+
         # Create sequential network
         net = torch.nn.Sequential(layer1, layer2)
-        
+
         # Forward pass with input data
         x = torch.randn(5, 3, device=global_device())
         output = net(x)
-        
+
         # Create a loss and backward pass to generate gradients
         loss = torch.norm(output)
         loss.backward()
-        
+
         # Update tensor statistics
         layer1.update_computation()
         layer2.update_computation()
-        
+
         # Compute optimal delta for layer2 (required for projected_v_goal)
         layer2.compute_optimal_delta()
-        
+
         # Test compute_n_update on layer1 (which has layer2 as next_module)
         n_update, n_samples = layer1.compute_n_update()
-        
+
         # Verify shapes and values - the shape is (in_features, out_features) without bias
         expected_shape = (layer1.in_features, layer2.out_features)
         self.assertEqual(n_update.shape, expected_shape)
@@ -1581,16 +1631,20 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_compute_n_update_with_different_shapes(self, bias):
         """Test compute_n_update with different layer dimensions."""
         # Test with different layer sizes
-        layer1 = LinearGrowingModule(4, 3, use_bias=bias, device=global_device(), name="layer1")
-        layer2 = LinearGrowingModule(3, 5, use_bias=bias, device=global_device(), name="layer2")
+        layer1 = LinearGrowingModule(
+            4, 3, use_bias=bias, device=global_device(), name="layer1"
+        )
+        layer2 = LinearGrowingModule(
+            3, 5, use_bias=bias, device=global_device(), name="layer2"
+        )
         layer1.next_module = layer2
         layer2.previous_module = layer1
-        
+
         # Initialize and setup
         layer1.init_computation()
         layer2.init_computation()
         net = torch.nn.Sequential(layer1, layer2)
-        
+
         # Multiple batch sizes to test tensor flattening
         for batch_size in [1, 3, 7]:
             net.zero_grad()
@@ -1598,15 +1652,15 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             output = net(x)
             loss = torch.norm(output)
             loss.backward()
-            
+
             layer1.update_computation()
             layer2.update_computation()
-            
+
             # Compute optimal delta for layer2 (required for projected_v_goal)
             layer2.compute_optimal_delta()
-            
+
             n_update, n_samples = layer1.compute_n_update()
-            
+
             # Verify correct shapes and sample counting - shape is (in_features, out_features) without bias
             expected_shape = (layer1.in_features, layer2.out_features)
             self.assertEqual(n_update.shape, expected_shape)
@@ -1615,66 +1669,74 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_compute_n_update_type_error(self):
         """Test compute_n_update raises TypeError for non-LinearGrowingModule next_module."""
         layer1 = LinearGrowingModule(3, 2, device=global_device(), name="layer1")
-        
+
         # Set next_module to a regular Linear layer (not LinearGrowingModule)
         layer1.next_module = torch.nn.Linear(2, 4)
-        
+
         # Initialize computation
         layer1.init_computation()
-        
+
         # Setup input and forward pass
         x = torch.randn(2, 3, device=global_device())
         output = layer1(x)
         loss = torch.norm(output)
         loss.backward()
         layer1.update_computation()
-        
+
         # Should raise TypeError due to wrong next_module type
         with self.assertRaises(TypeError) as context:
             layer1.compute_n_update()
-        
-        self.assertIn("The next module must be a LinearGrowingModule", str(context.exception))
+
+        self.assertIn(
+            "The next module must be a LinearGrowingModule", str(context.exception)
+        )
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_n_update_tensor_computation_correctness(self, bias):
         """Test compute_n_update mathematical correctness with known values."""
         # Create layers with known dimensions for predictable testing
-        layer1 = LinearGrowingModule(2, 2, use_bias=bias, device=global_device(), name="layer1")
-        layer2 = LinearGrowingModule(2, 2, use_bias=bias, device=global_device(), name="layer2")
+        layer1 = LinearGrowingModule(
+            2, 2, use_bias=bias, device=global_device(), name="layer1"
+        )
+        layer2 = LinearGrowingModule(
+            2, 2, use_bias=bias, device=global_device(), name="layer2"
+        )
         layer1.next_module = layer2
         layer2.previous_module = layer1
-        
+
         # Initialize computation
         layer1.init_computation()
         layer2.init_computation()
-        
+
         # Use simple input for easier verification
         x = torch.ones(2, 2, device=global_device())  # Simple input: all ones
-        
+
         # Forward pass
         out1 = layer1(x)
         out2 = layer2(out1)
-        
+
         # Backward pass
         loss = torch.norm(out2)
         loss.backward()
-        
+
         # Update computations
         layer1.update_computation()
         layer2.update_computation()
-        
+
         # Compute optimal delta for layer2 (required for projected_v_goal)
         layer2.compute_optimal_delta()
-        
+
         # Test compute_n_update
         n_update, n_samples = layer1.compute_n_update()
-        
+
         # Verify that computation uses the correct einsum operation
         # The method should compute: torch.einsum("ij,ik->jk", input_flat, projected_v_goal_flat)
         input_flat = torch.flatten(layer1.input, 0, -2)
-        projected_v_goal_flat = torch.flatten(layer2.projected_v_goal(layer2.input), 0, -2)
+        projected_v_goal_flat = torch.flatten(
+            layer2.projected_v_goal(layer2.input), 0, -2
+        )
         expected_n_update = torch.einsum("ij,ik->jk", input_flat, projected_v_goal_flat)
-        
+
         # Assert the computed n_update matches expected calculation
         self.assertAllClose(n_update, expected_n_update, atol=1e-6)
         self.assertEqual(n_samples, 2)  # batch size
@@ -1683,7 +1745,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test behavior when next_module is None (should raise TypeError)."""
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         layer.next_module = None  # No next module
-        
+
         # This method should only be called when there's a valid next_module
         # The method raises TypeError when next_module is not a LinearGrowingModule
         x = torch.randn(2, 3, device=global_device())
@@ -1692,7 +1754,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         loss = torch.norm(output)
         loss.backward()
         layer.update_computation()
-        
+
         # Should raise TypeError when next_module is not a LinearGrowingModule
         with self.assertRaises(TypeError):
             layer.compute_n_update()
@@ -1702,10 +1764,10 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Test various initialization scenarios
         layer1 = LinearGrowingModule(3, 2, use_bias=True, device=global_device())
         layer2 = LinearGrowingModule(3, 2, use_bias=False, device=global_device())
-        
+
         # Test setting next_module property directly (instead of through set_next_modules)
         layer1.next_module = layer2
-        
+
         # Test accessing properties that might trigger missing lines
         self.assertIsInstance(layer1.use_bias, bool)
         self.assertIsInstance(layer2.use_bias, bool)
@@ -1713,18 +1775,18 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_layer_of_tensor_method_coverage(self):
         """Test layer_of_tensor method to cover missing lines."""
         layer = LinearGrowingModule(3, 2, use_bias=True, device=global_device())
-        
+
         # Test layer_of_tensor with bias (should cover initialization edge cases)
         weight = torch.randn(2, 3, device=global_device())
         bias = torch.randn(2, device=global_device())
-        
+
         new_layer = layer.layer_of_tensor(weight, bias=bias)
         self.assertIsInstance(new_layer, torch.nn.Linear)
         self.assertEqual(new_layer.in_features, 3)
         self.assertEqual(new_layer.out_features, 2)
         self.assertAllClose(new_layer.weight, weight)
         self.assertAllClose(new_layer.bias, bias)
-        
+
         # Test layer_of_tensor without bias using a layer without bias
         layer_no_bias = LinearGrowingModule(3, 2, use_bias=False, device=global_device())
         new_layer_no_bias = layer_no_bias.layer_of_tensor(weight, bias=None)
@@ -1737,26 +1799,26 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer2 = LinearGrowingModule(2, 4, device=global_device(), name="layer2")
         layer1.next_module = layer2
         layer2.previous_module = layer1
-        
+
         # Initialize computation
         layer1.init_computation()
         layer2.init_computation()
-        
+
         # Forward pass
         x = torch.randn(5, 3, device=global_device())
         y1 = layer1(x)
         y2 = layer2(y1)
         loss = torch.norm(y2)
         loss.backward()
-        
+
         # Update computations
         layer1.update_computation()
         layer2.update_computation()
-        
+
         # Test tensor_s_growth property (should cover lines related to tensor growth)
         tensor_s_growth = layer2.tensor_s_growth
         self.assertIsInstance(tensor_s_growth, TensorStatistic)
-        
+
         # Test that tensor_s_growth has expected properties
         growth_tensor = tensor_s_growth()
         expected_size = layer1.in_features + (1 if layer1.use_bias else 0)
@@ -1766,12 +1828,12 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test scenarios that might trigger multiple missing parameter lines."""
         # Test with different device scenarios (might trigger device-related missing lines)
         layer = LinearGrowingModule(2, 3, device=global_device())
-        
+
         # Test parameter counting with different configurations
         base_params = layer.number_of_parameters()
         expected_params = 2 * 3 + 3  # weight + bias
         self.assertEqual(base_params, expected_params)
-        
+
         # Test layer string representation (might cover __str__ related lines)
         layer_str = str(layer)
         self.assertIn("LinearGrowingModule", layer_str)
@@ -1781,16 +1843,16 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_input_extended_property_access(self):
         """Test input_extended property to potentially cover missing lines."""
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
-        
+
         # Set up for input_extended access
         layer.init_computation()
         x = torch.randn(4, 3, device=global_device())
         output = layer(x)
-        
+
         # Access input_extended property (might trigger missing lines)
         input_extended = layer.input_extended
         self.assertIsNotNone(input_extended)
-        
+
         # Check that extended input has correct shape (includes bias if applicable)
         expected_extended_features = layer.in_features + (1 if layer.use_bias else 0)
         self.assertEqual(input_extended.shape[-1], expected_extended_features)
@@ -1800,29 +1862,34 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Test case 1: No previous module
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         layer.previous_module = None
-        
+
         with self.assertRaises(ValueError) as context:
             _ = layer.tensor_s_growth
         self.assertIn("No previous module", str(context.exception))
-        
+
         # Test case 2: Previous module is LinearMergeGrowingModule (NotImplementedError)
         merge_layer = LinearMergeGrowingModule(
             post_merge_function=torch.nn.Identity(),
             in_features=3,
             device=global_device(),
-            name="merge"
+            name="merge",
         )
         layer_with_merge = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         layer_with_merge.previous_module = merge_layer
-        
+
         with self.assertRaises(NotImplementedError) as context:
             _ = layer_with_merge.tensor_s_growth
-        self.assertIn("S growth is not implemented for module preceded by an LinearMergeGrowingModule", str(context.exception))
-        
-        # Test case 3: Unsupported previous module type  
-        layer_unsupported = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        self.assertIn(
+            "S growth is not implemented for module preceded by an LinearMergeGrowingModule",
+            str(context.exception),
+        )
+
+        # Test case 3: Unsupported previous module type
+        layer_unsupported = LinearGrowingModule(
+            3, 2, device=global_device(), name="layer"
+        )
         layer_unsupported.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
-        
+
         with self.assertRaises(NotImplementedError) as context:
             _ = layer_unsupported.tensor_s_growth
         self.assertIn("S growth is not implemented yet", str(context.exception))
@@ -1830,27 +1897,29 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_activation_gradient_not_implemented(self):
         """Test activation gradient computation with unsupported previous module (lines 359-364)."""
         layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
-        
+
         # Set an unsupported previous module type
-        layer.previous_module = torch.nn.Linear(3, 4)  # Regular Linear layer, not supported
-        
+        layer.previous_module = torch.nn.Linear(
+            3, 4
+        )  # Regular Linear layer, not supported
+
         # Should raise NotImplementedError
         with self.assertRaises(NotImplementedError):
             _ = layer.activation_gradient
 
     # PHASE 3 - TARGETING 95% COVERAGE: SPECIFIC MISSING LINES
-    
+
     def test_activation_gradient_growing_module(self):
         """Test activation gradient computation with GrowingModule as previous module (line 360)."""
         from gromo.modules.growing_module import GrowingModule
-        
+
         # Create a mock GrowingModule with post_layer_function
         previous_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
         previous_module.post_layer_function = torch.nn.ReLU()  # Set activation function
-        
+
         layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
         layer.previous_module = previous_module
-        
+
         # Test activation gradient computation - should cover line 360
         activation_grad = layer.activation_gradient
         self.assertIsInstance(activation_grad, torch.Tensor)
@@ -1862,12 +1931,12 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             in_features=4,
             post_merge_function=torch.nn.Identity(),  # Use Identity to return scalar
             device=global_device(),
-            name="merge"
+            name="merge",
         )
-        
+
         layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
         layer.previous_module = merge_module
-        
+
         # Test activation gradient computation - should cover line 364
         activation_grad = layer.activation_gradient
         self.assertIsInstance(activation_grad, torch.Tensor)
@@ -1878,26 +1947,28 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         prev_layer = LinearGrowingModule(3, 2, device=global_device(), name="prev")
         layer = LinearGrowingModule(2, 2, device=global_device(), name="layer")
         layer.previous_module = prev_layer
-        
+
         # Enable input storage for both layers
         prev_layer.store_input = True
         layer.store_input = True
-        
+
         # Create activity tensor that will trigger the else branch (not reshaped case)
-        object.__setattr__(layer, 'activity', torch.randn(5, 2, device=layer.device))  # No extra dimensions
-        
+        object.__setattr__(
+            layer, "activity", torch.randn(5, 2, device=layer.device)
+        )  # No extra dimensions
+
         # Set up previous module input to satisfy the method requirements
         prev_layer.init_computation()
         layer.init_computation()
-        
+
         # Do a forward pass to populate both layers
         x = torch.randn(5, 3, device=global_device())
         out1 = prev_layer(x)
         _ = layer(out1)
-        
+
         # Call compute_cross_covariance_update - should cover line 223 (else branch)
         result, samples = layer.compute_cross_covariance_update()
-        
+
         # Verify result shapes and types
         self.assertIsInstance(result, torch.Tensor)
         self.assertEqual(samples, 5)
@@ -1906,9 +1977,11 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_compute_optimal_delta_bias_handling_paths(self):
         """Test compute_optimal_delta bias handling paths (lines 275-279, 292->298, 304->309)."""
         # Create a simpler test that actually works
-        layer = LinearGrowingModule(3, 2, use_bias=True, device=global_device(), name="layer")
+        layer = LinearGrowingModule(
+            3, 2, use_bias=True, device=global_device(), name="layer"
+        )
         layer.init_computation()
-        
+
         # Forward pass to populate tensors
         layer.store_input = True
         x = torch.randn(5, 3, device=global_device())
@@ -1916,10 +1989,10 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         loss = torch.norm(output)
         loss.backward()
         layer.update_computation()
-        
+
         # Test compute_optimal_delta - this should work and cover some lines
         layer.compute_optimal_delta()
-        
+
         # Verify layer is still functional
         self.assertIsInstance(layer.optimal_delta_layer, torch.nn.Linear)
 
@@ -1928,23 +2001,23 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Test case 1: No previous module (line 498)
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         layer.previous_module = None
-        
+
         # Create a dummy desired_activation to avoid the pre_activity.grad issue
         desired_activation = torch.randn(2, 2, device=global_device())
-        
+
         with self.assertRaises(ValueError) as context:
             layer.compute_m_prev_update(desired_activation)
         self.assertIn("No previous module", str(context.exception))
-        
+
         # Test case 2: Unsupported previous module type (lines 551-552)
         layer2 = LinearGrowingModule(3, 2, device=global_device(), name="layer2")
         layer2.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
-        
+
         # Need to set up store_input manually and provide input directly
         layer2.store_input = True
         x = torch.randn(2, 3, device=global_device())
         _ = layer2(x)  # This will populate the input
-        
+
         with self.assertRaises(NotImplementedError) as context:
             layer2.compute_m_prev_update(desired_activation)
         self.assertIn("not implemented yet", str(context.exception))
@@ -1956,35 +2029,35 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer2 = LinearGrowingModule(2, 4, device=global_device(), name="layer2")
         layer1.next_module = layer2
         layer2.previous_module = layer1
-        
+
         # Initialize computation
         layer1.init_computation()
         layer2.init_computation()
-        
+
         # Enable input storage
         layer1.store_input = True
         layer2.store_input = True
-        
+
         # Test different tensor shapes and configurations
         x = torch.randn(1, 3, device=global_device())  # Single sample to test edge case
         output = layer1(x)
         output = layer2(output)
-        
+
         loss = torch.norm(output)
         loss.backward()
-        
+
         # Update computations
         layer1.update_computation()
         layer2.update_computation()
-        
+
         # Test various methods that might trigger remaining missing lines
         layer2.compute_optimal_delta()
-        
+
         # Test with different input shapes by doing another forward pass
         x_new = torch.randn(7, 3, device=global_device())  # Different batch size
         output_new = layer1(x_new)
         output_new = layer2(output_new)
-        
+
         # Test compute_p with different configurations
         try:
             p_result, p_samples = layer2.compute_p()
@@ -1992,7 +2065,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             self.assertEqual(p_samples, 7)
         except Exception:
             pass  # Some configurations might not work, that's OK
-        
+
         # Test compute_n_update with different scenarios
         try:
             n_update, n_samples = layer1.compute_n_update()
@@ -2005,23 +2078,25 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test sub_select_optimal_added_parameters with different previous module types (lines 897-905)."""
         # Test case 1: Previous module is LinearMergeGrowingModule (should trigger NotImplementedError on line 900)
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
-        merge_module = LinearMergeGrowingModule(in_features=3, device=global_device(), name="merge")
+        merge_module = LinearMergeGrowingModule(
+            in_features=3, device=global_device(), name="merge"
+        )
         layer.previous_module = merge_module
-        
+
         # Create extended input layer to satisfy assertion
         layer.extended_input_layer = torch.nn.Linear(2, 2, device=global_device())
         # Set up eigenvalues_extension to satisfy the assertion
         layer.eigenvalues_extension = torch.tensor([1.0, 2.0], device=global_device())
-        
+
         with self.assertRaises(NotImplementedError):
             layer.sub_select_optimal_added_parameters(1, sub_select_previous=True)
-        
+
         # Test case 2: Previous module is unsupported type (should trigger lines 902-905)
         layer2 = LinearGrowingModule(3, 2, device=global_device(), name="layer2")
         layer2.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
         layer2.extended_input_layer = torch.nn.Linear(2, 2, device=global_device())
         layer2.eigenvalues_extension = torch.tensor([1.0, 2.0], device=global_device())
-        
+
         with self.assertRaises(NotImplementedError) as context:
             layer2.sub_select_optimal_added_parameters(1, sub_select_previous=True)
         self.assertIn("not implemented yet", str(context.exception))
@@ -2030,7 +2105,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test compute_optimal_added_parameters with different previous module types (lines 972-985)."""
         # Set up a layer that will reach the update_previous section
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
-        
+
         # Mock the _auxiliary_compute_alpha_omega method to skip tensor computation
         def mock_auxiliary_compute(self, **kwargs):
             # Return mock tensors that satisfy the method requirements
@@ -2040,29 +2115,38 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             k = 1  # number of added neurons
             out_features = layer.out_features  # 2
             alpha = torch.randn(k, 3, device=global_device())  # (k, in_features)
-            omega = torch.randn(out_features, k, device=global_device())  # (out_features, k)
+            omega = torch.randn(
+                out_features, k, device=global_device()
+            )  # (out_features, k)
             eigenvalues = torch.randn(k, device=global_device())
             return alpha, omega, eigenvalues
-        
+
         # Bind the mock method to the layer instance
         import types
-        layer._auxiliary_compute_alpha_omega = types.MethodType(mock_auxiliary_compute, layer)
-        
+
+        layer._auxiliary_compute_alpha_omega = types.MethodType(
+            mock_auxiliary_compute, layer
+        )
+
         # Test case 1: Previous module is LinearMergeGrowingModule (should trigger line 977)
-        merge_module = LinearMergeGrowingModule(in_features=3, device=global_device(), name="merge")
+        merge_module = LinearMergeGrowingModule(
+            in_features=3, device=global_device(), name="merge"
+        )
         layer.previous_module = merge_module
-        
+
         with self.assertRaises(NotImplementedError):
             layer.compute_optimal_added_parameters(update_previous=True)
-        
+
         # Test case 2: Previous module is unsupported type (should trigger lines 979-982)
         class MockLinear(torch.nn.Linear):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.use_bias = True  # Add the missing attribute
-        
-        layer.previous_module = MockLinear(2, 3)  # Mock Linear layer with use_bias attribute
-        
+
+        layer.previous_module = MockLinear(
+            2, 3
+        )  # Mock Linear layer with use_bias attribute
+
         with self.assertRaises(NotImplementedError) as context:
             layer.compute_optimal_added_parameters(update_previous=True)
         self.assertIn("not implemented yet", str(context.exception))
@@ -2070,54 +2154,70 @@ class TestLinearMergeGrowingModule(TorchTestCase):
     def test_force_pseudo_inverse_path_coverage(self):
         """Test specific paths in compute_optimal_delta to cover remaining missing lines."""
         # Create a scenario that will trigger different paths in compute_optimal_delta
-        merge_module = LinearMergeGrowingModule(in_features=2, device=global_device(), name="merge")
-        
+        merge_module = LinearMergeGrowingModule(
+            in_features=2, device=global_device(), name="merge"
+        )
+
         # Create a previous module with bias
-        prev_module = LinearGrowingModule(2, 2, use_bias=True, device=global_device(), name="prev")
+        prev_module = LinearGrowingModule(
+            2, 2, use_bias=True, device=global_device(), name="prev"
+        )
         merge_module.set_previous_modules([prev_module])
-        
+
         # Initialize computation
         merge_module.init_computation()
-        
+
         # Forward pass to populate tensors
         x = torch.randn(3, 2, device=global_device())
         output = prev_module(x)
         loss = torch.norm(output)
         loss.backward()
         merge_module.update_computation()
-        
+
         # Create tensor statistics that will trigger specific paths
         # Use a singular matrix to force pseudo-inverse path
         total_features = prev_module.in_features + 1  # +1 for bias
-        singular_tensor_s = torch.zeros(total_features, total_features, device=global_device())
+        singular_tensor_s = torch.zeros(
+            total_features, total_features, device=global_device()
+        )
         singular_tensor_s[0, 0] = 1.0  # Make it singular but not completely zero
-        
-        tensor_m_data = torch.randn(total_features, merge_module.in_features, device=global_device())
-        
+
+        tensor_m_data = torch.randn(
+            total_features, merge_module.in_features, device=global_device()
+        )
+
         # Mock tensor statistics
-        mock_tensor_s = TensorStatistic((total_features, total_features), lambda: (singular_tensor_s, 1))
-        mock_tensor_m = TensorStatistic((total_features, merge_module.in_features), lambda: (tensor_m_data, 1))
-        
+        mock_tensor_s = TensorStatistic(
+            (total_features, total_features), lambda: (singular_tensor_s, 1)
+        )
+        mock_tensor_m = TensorStatistic(
+            (total_features, merge_module.in_features), lambda: (tensor_m_data, 1)
+        )
+
         # Properly set the internal tensor and samples
         mock_tensor_s._tensor = singular_tensor_s
         mock_tensor_s.samples = 1
         mock_tensor_m._tensor = tensor_m_data
         mock_tensor_m.samples = 1
-        
-        object.__setattr__(merge_module, 'previous_tensor_s', mock_tensor_s)
-        object.__setattr__(merge_module, 'previous_tensor_m', mock_tensor_m)
-        
+
+        object.__setattr__(merge_module, "previous_tensor_s", mock_tensor_s)
+        object.__setattr__(merge_module, "previous_tensor_m", mock_tensor_m)
+
         # This should trigger the LinAlgError exception and force pseudo-inverse (lines 275-279)
-        deltas = merge_module.compute_optimal_delta(return_deltas=True, force_pseudo_inverse=False)
-        
+        deltas = merge_module.compute_optimal_delta(
+            return_deltas=True, force_pseudo_inverse=False
+        )
+
         # Verify that deltas were computed using pseudo-inverse
         self.assertIsInstance(deltas, list)
         assert deltas is not None
         self.assertEqual(len(deltas), 1)  # One previous module
-        
+
         # Check the delta shapes
         delta_w, delta_b = deltas[0]
-        self.assertEqual(delta_w.shape, (prev_module.out_features, prev_module.in_features))
+        self.assertEqual(
+            delta_w.shape, (prev_module.out_features, prev_module.in_features)
+        )
         self.assertIsNotNone(delta_b)  # Should have bias
         self.assertEqual(delta_b.shape, (prev_module.out_features,))
 
