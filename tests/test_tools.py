@@ -483,9 +483,11 @@ class TestTools(TorchTestCase):
         import io
         import unittest.mock
 
-        # Create a proper successful result with correct shapes BEFORE mocking
-        dummy_matrix = torch.randn(3, 2)  # Same shape as matrix_p would be
-        u_real, s_real, vt_real = torch.linalg.svd(dummy_matrix, full_matrices=False)
+        # Create a proper successful result with correct values by computing SVD on the actual matrix_p
+        # Replicate the computation of matrix_p as in compute_optimal_added_parameters
+        matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
+        matrix_p = matrix_s_inverse_sqrt @ matrix_n
+        u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
         successful_result = (u_real, s_real, vt_real)
 
         # Capture stdout to verify debug prints (lines 109-115)
