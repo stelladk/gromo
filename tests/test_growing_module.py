@@ -402,7 +402,7 @@ class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
 
     def test_update_computation_method_direct_call(self):
         """Test the new update_computation method added in growing_module.py (lines 275-281)
-        
+
         This test specifically targets the missing differential coverage for the new
         update_computation method that was added to MergeGrowingModule.
         """
@@ -413,53 +413,53 @@ class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
         merge_module = LinearMergeGrowingModule(
             in_features=3, device=global_device(), name="test_merge"
         )
-        
+
         # Connect the modules properly
         prev_module.next_module = merge_module
         merge_module.set_previous_modules([prev_module])
-        
+
         # Create a sequential network
         network = torch.nn.Sequential(prev_module, merge_module)
-        
+
         # Initialize computation - this sets up tensor statistics
         merge_module.init_computation()
-        
+
         # Verify initial state (after init, tensors should exist)
         self.assertEqual(merge_module.tensor_s.samples, 0)
         if merge_module.previous_tensor_s is not None:
             self.assertEqual(merge_module.previous_tensor_s.samples, 0)
         if merge_module.previous_tensor_m is not None:
             self.assertEqual(merge_module.previous_tensor_m.samples, 0)
-        
+
         # Run forward/backward pass through the network
         network.zero_grad()
         x = torch.randn(5, 2, device=global_device())
         output = network(x)
         loss = torch.norm(output)
         loss.backward()
-        
+
         # DIRECT TEST of the new update_computation method
         # This specifically targets lines 275-281 in growing_module.py
         merge_module.update_computation()
-        
+
         # Verify that tensor statistics were updated
         self.assertGreater(merge_module.tensor_s.samples, 0)
         if merge_module.previous_tensor_s is not None:
             self.assertGreater(merge_module.previous_tensor_s.samples, 0)
         if merge_module.previous_tensor_m is not None:
             self.assertGreater(merge_module.previous_tensor_m.samples, 0)
-        
+
         # Verify tensor statistics have meaningful data
         tensor_s_result = merge_module.tensor_s()
         self.assertIsInstance(tensor_s_result, torch.Tensor)
         # Shape includes bias: (in_features + 1, in_features + 1) = (4, 4)
         expected_size = 4  # 3 input features + 1 bias
         self.assertEqual(tensor_s_result.shape, (expected_size, expected_size))
-        
+
         if merge_module.previous_tensor_s is not None:
             prev_tensor_s_result = merge_module.previous_tensor_s()
             self.assertIsInstance(prev_tensor_s_result, torch.Tensor)
-        
+
         if merge_module.previous_tensor_m is not None:
             prev_tensor_m_result = merge_module.previous_tensor_m()
             self.assertIsInstance(prev_tensor_m_result, torch.Tensor)
