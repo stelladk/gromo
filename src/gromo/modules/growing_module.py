@@ -253,23 +253,12 @@ class MergeGrowingModule(torch.nn.Module):
         self.store_activity = True
         for module in self.previous_modules:
             module.store_input = True
-            module.store_pre_activity = True
+            module.store_activity = True
         self.tensor_s.init()
-        self.previous_tensor_s.init()
-        self.previous_tensor_m.init()
-
-    def reset_computation(self) -> None:
-        """
-        Reset the computation of the optimal added parameters.
-        """
-        self.store_input = False
-        self.store_activity = False
-        for module in self.previous_modules:
-            module.store_input = False
-            module.store_pre_activity = False
-        self.tensor_s.reset()
-        self.previous_tensor_s.reset()
-        self.previous_tensor_m.reset()
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.init()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.init()
 
     def update_computation(self) -> None:
         """
@@ -280,6 +269,21 @@ class MergeGrowingModule(torch.nn.Module):
             self.previous_tensor_s.update()
         if self.previous_tensor_m is not None:
             self.previous_tensor_m.update()
+
+    def reset_computation(self) -> None:
+        """
+        Reset the computation of the optimal added parameters.
+        """
+        self.store_input = False
+        self.store_activity = False
+        for module in self.previous_modules:
+            module.store_input = False
+            module.store_activity = False
+        self.tensor_s.reset()
+        if self.previous_tensor_s is not None:
+            self.previous_tensor_s.reset()
+        if self.previous_tensor_m is not None:
+            self.previous_tensor_m.reset()
 
     def delete_update(self, include_previous: bool = False) -> None:
         """
