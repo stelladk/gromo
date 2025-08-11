@@ -547,7 +547,7 @@ class TestTools(TorchTestCase):
 
             output = captured_output.getvalue()
 
-            # Verify specific matrix information is printed (lines 110-115)
+            # Verify specific matrix information is printed
             self.assertIn("matrix_s.min()=", output)
             self.assertIn("matrix_s.max()=", output)
             self.assertIn("matrix_s.shape=", output)
