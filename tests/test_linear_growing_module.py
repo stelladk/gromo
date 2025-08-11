@@ -1122,9 +1122,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             expected_shape = (layer.in_features, layer.in_features)
             self.assertEqual(p_result.shape, expected_shape)
 
-    # DIFFERENTIAL COVERAGE IMPROVEMENTS - ADDITIONAL COVERAGE
-    # Previously in TestDifferentialCoveragePhase4 - integrated for better maintainability
-
     def test_compute_s_update_else_branch(self):
         """Test the else branch in LinearMergeGrowingModule compute_s_update (line 223)"""
         # Create a LinearMergeGrowingModule and set bias=False to trigger the else branch
