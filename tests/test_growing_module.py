@@ -430,7 +430,7 @@ class TestGrowingModuleEdgeCases(TorchTestCase):
 
 
 class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
-    """Phase 1: Test the new update_computation method for differential coverage improvement."""
+    """Test the update_computation method for differential coverage improvement."""
 
     def test_update_computation_method_comprehensive(self):
         """Test the new update_computation method for comprehensive differential coverage.
