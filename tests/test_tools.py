@@ -512,7 +512,7 @@ class TestTools(TorchTestCase):
             self.assertIn("matrix_s_inverse_sqrt:", output)
             self.assertIn("matrix_p:", output)
 
-            # Verify the function still succeeded after retry (line 116)
+            # Verify the function still succeeded after retry
             self.assertIsNotNone(alpha)
             self.assertIsNotNone(omega)
             self.assertIsNotNone(eigenvalues)
