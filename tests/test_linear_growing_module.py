@@ -1040,8 +1040,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         with self.assertRaises(ValueError):
             _ = self.demo_layers[True][0].tensor_s_growth
 
-    # DIFFERENTIAL COVERAGE IMPROVEMENTS - ERROR CONDITIONS AND EDGE CASES
-    # Previously in TestDifferentialCoveragePhase3 - integrated for better maintainability
 
     def test_multiple_successors_warning(self):
         """Test warning for multiple successors (lines 511-513)"""
