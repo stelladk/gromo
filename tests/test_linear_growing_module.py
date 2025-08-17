@@ -2086,7 +2086,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
     def test_activation_gradient_growing_module(self):
         """Test activation gradient computation with GrowingModule as previous module (line 360)."""
-        from gromo.modules.growing_module import GrowingModule
 
         # Create a mock GrowingModule with post_layer_function
         previous_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
