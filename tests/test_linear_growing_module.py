@@ -1,7 +1,7 @@
 import types
 from copy import deepcopy
 from typing import Any, Dict, Tuple
-from unittest import TestCase, main
+from unittest import TestCase, main, mock
 
 import torch
 
@@ -1043,7 +1043,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
 
     def test_multiple_successors_warning(self):
-        """Test warning for multiple successors (lines 511-513)"""
+        """Test warning for multiple successors"""
 
         # Create layer
         layer = LinearGrowingModule(3, 2, device=global_device(), name="test_layer")
@@ -1064,7 +1064,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         layer._input = torch.randn(2, 3, device=global_device())
 
         # Mock the construct_full_activity method
-        with patch.object(
+        with mock.patch.object(
             merge_module,
             "construct_full_activity",
             return_value=torch.randn(2, 3, device=global_device()),
@@ -1079,18 +1079,18 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             self.assertIn("multiple successors", str(warning_context.warning))
 
     def test_compute_cross_covariance_update_no_previous_module_error(self):
-        """Test ValueError when no previous module (line 539)"""
+        """Test ValueError when no previous module"""
         layer = LinearGrowingModule(3, 2, device=global_device())
         layer.previous_module = None  # No previous module
 
-        # Should trigger ValueError at line 539
+        # Should trigger ValueError
         with self.assertRaises(ValueError) as context:
             layer.compute_cross_covariance_update()
         self.assertIn("No previous module", str(context.exception))
         self.assertIn("Thus P is not defined", str(context.exception))
 
     def test_compute_cross_covariance_update_merge_previous_module(self):
-        """Test compute_cross_covariance_update with LinearMergeGrowingModule as previous (lines 551-552)"""
+        """Test compute_cross_covariance_update with LinearMergeGrowingModule as previous"""
         from unittest.mock import patch
 
         # Create layer
@@ -1112,7 +1112,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             return_value=torch.randn(2, 3, device=global_device()),
         ):
 
-            # This should trigger lines 551-552 (LinearMergeGrowingModule path)
+
             p_result, p_samples = layer.compute_cross_covariance_update()
 
             self.assertIsInstance(p_result, torch.Tensor)
@@ -1123,16 +1123,16 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             self.assertEqual(p_result.shape, expected_shape)
 
     def test_compute_s_update_else_branch(self):
-        """Test the else branch in LinearMergeGrowingModule compute_s_update (line 223)"""
+        """Test the else branch in LinearMergeGrowingModule compute_s_update"""
         # Create a LinearMergeGrowingModule and set bias=False to trigger the else branch
         merge_layer = LinearMergeGrowingModule(in_features=3, device=global_device())
-        merge_layer.use_bias = False  # Set to False to trigger else branch at line 223
+        merge_layer.use_bias = False  # Set to False to trigger else branch in compute_s_update
 
         # Set up proper activity storage
         merge_layer.store_activity = True
         merge_layer.activity = torch.randn(2, 3, device=global_device())
 
-        # Call compute_s_update - this should hit the else branch at line 223 (no bias)
+        # Call compute_s_update - this should hit the else branch (no bias)
         s_result, s_samples = merge_layer.compute_s_update()
 
         self.assertIsInstance(s_result, torch.Tensor)
@@ -1141,7 +1141,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(s_result.shape, expected_shape)
 
     def test_compute_m_update_none_desired_activation(self):
-        """Test compute_m_update with None desired_activation (branch 466->468)"""
+        """Test compute_m_update with None desired_activation"""
         layer = LinearGrowingModule(3, 2, device=global_device())
 
         # Set up required data with proper forward pass
