@@ -1165,7 +1165,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertGreater(m_samples, 0)
 
     def test_negative_parameter_update_decrease_paths(self):
-        """Test error paths for problematic parameter computations (lines 1234-1250)"""
+        """Test error paths for problematic parameter computations"""
         from unittest.mock import patch
 
         # Create a layer and set up for computation
@@ -1341,7 +1341,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         )
 
     def test_set_next_modules_warning_and_assertion(self):
-        """Test set_next_modules triggers warning and assertion for feature mismatch (lines 52, 85)."""
+        """Test set_next_modules triggers warning and assertion for feature mismatch."""
         layer = LinearMergeGrowingModule(
             in_features=3, name="merge", device=global_device()
         )
@@ -1361,7 +1361,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             layer.set_next_modules([mismatch_layer])
 
     def test_set_previous_modules_warning_and_assertion(self):
-        """Test set_previous_modules triggers warnings and assertion for feature mismatch (lines 73, 77, 87)."""
+        """Test set_previous_modules triggers warnings and assertion for feature mismatch."""
         layer = LinearMergeGrowingModule(
             in_features=3, name="merge", device=global_device()
         )
@@ -1385,9 +1385,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Should trigger assertion for wrong type
         with self.assertRaises(TypeError):
             layer.set_previous_modules([torch.nn.Linear(3, 2)])
-
-    # PHASE 1 - CRITICAL COVERAGE IMPROVEMENTS
-    # Adding comprehensive tests for compute_optimal_delta (0% coverage -> +15% gain)
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_delta_basic_functionality(self, bias):
@@ -1555,12 +1552,9 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         with self.assertRaises(ValueError):
             merge_module.compute_optimal_delta()
 
-    # PHASE 2 - TARGET 95% COVERAGE: MAJOR MISSING FUNCTIONALITY
-    # Adding comprehensive tests for add_parameters method (lines 725-767)
-
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_add_parameters_input_features(self, bias):
-        """Test add_parameters method for adding input features (lines 725-767)."""
+        """Test add_parameters method for adding input features."""
         layer = LinearGrowingModule(3, 2, use_bias=bias, device=global_device())
         original_in_features = layer.in_features
         original_out_features = layer.out_features
@@ -1568,7 +1562,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Test adding input features with default zero matrix
         added_in_features = 2
 
-        # This should trigger lines 728-736 (added_in_features > 0 branch)
+        # This should trigger the added_in_features > 0 branch
         layer.add_parameters(
             matrix_extension=None,
             bias_extension=None,
@@ -1603,7 +1597,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             original_out_features, added_in_features, device=global_device()
         )
 
-        # This should trigger lines 737-744 (custom matrix_extension branch)
+        # This should trigger the custom matrix_extension branch
         layer.add_parameters(
             matrix_extension=custom_matrix,
             bias_extension=None,
@@ -1634,7 +1628,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         # Test adding output features with default matrices
         added_out_features = 2
 
-        # This should trigger lines 746-767 (added_out_features > 0 branch)
+        # This should trigger the added_out_features > 0 branch
         layer.add_parameters(
             matrix_extension=None,
             bias_extension=None,
@@ -1670,7 +1664,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             torch.ones(added_out_features, device=global_device()) * 5.0 if bias else None
         )
 
-        # This should trigger lines 750-766 (custom matrix/bias extension branches)
+        # This should trigger the custom matrix/bias extension branches
         layer.add_parameters(
             matrix_extension=custom_weight,
             bias_extension=custom_bias,
@@ -1754,12 +1748,9 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             )
         self.assertIn("bias_extension should have shape", str(context.exception))
 
-    # PHASE 2.2 - COVERING compute_n_update METHOD (lines 579-589)
-    # Testing the fixed compute_n_update method with corrected projected_v_goal() call
-
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_n_update_basic_functionality(self, bias):
-        """Test compute_n_update method basic functionality (lines 579-589)."""
+        """Test compute_n_update method basic functionality."""
         # Create a chain of LinearGrowingModules: layer1 -> layer2
         layer1 = LinearGrowingModule(
             3, 2, use_bias=bias, device=global_device(), name="layer1"
@@ -1935,7 +1926,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             layer.compute_n_update()
 
     def test_layer_initialization_edge_cases(self):
-        """Test layer initialization with different bias settings (lines 85, 87)."""
+        """Test layer initialization with different bias settings."""
         # Test various initialization scenarios
         layer1 = LinearGrowingModule(3, 2, use_bias=True, device=global_device())
         layer2 = LinearGrowingModule(3, 2, use_bias=False, device=global_device())
@@ -2070,7 +2061,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIn("S growth is not implemented yet", str(context.exception))
 
     def test_activation_gradient_not_implemented(self):
-        """Test activation gradient computation with unsupported previous module (lines 359-364)."""
+        """Test activation gradient computation with unsupported previous module."""
         layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
 
         # Set an unsupported previous module type
@@ -2082,8 +2073,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         with self.assertRaises(NotImplementedError):
             _ = layer.activation_gradient
 
-    # PHASE 3 - TARGETING 95% COVERAGE: SPECIFIC MISSING LINES
-
     def test_activation_gradient_growing_module(self):
         """Test activation gradient computation with GrowingModule as previous module (line 360)."""
 
@@ -2094,12 +2083,12 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
         layer.previous_module = previous_module
 
-        # Test activation gradient computation - should cover line 360
+        # Test activation gradient computation
         activation_grad = layer.activation_gradient
         self.assertIsInstance(activation_grad, torch.Tensor)
 
     def test_activation_gradient_merge_growing_module(self):
-        """Test activation gradient computation with MergeGrowingModule as previous module (line 364)."""
+        """Test activation gradient computation with MergeGrowingModule as previous module."""
         # Create a LinearMergeGrowingModule with post_merge_function
         merge_module = LinearMergeGrowingModule(
             in_features=4,
@@ -2111,12 +2100,12 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(4, 2, device=global_device(), name="layer")
         layer.previous_module = merge_module
 
-        # Test activation gradient computation - should cover line 364
+        # Test activation gradient computation
         activation_grad = layer.activation_gradient
         self.assertIsInstance(activation_grad, torch.Tensor)
 
     def test_compute_cross_covariance_else_branch(self):
-        """Test compute_cross_covariance_update else branch (line 223)."""
+        """Test compute_cross_covariance_update else branch."""
         # Create a layer chain to satisfy the previous module requirement
         prev_layer = LinearGrowingModule(3, 2, device=global_device(), name="prev")
         layer = LinearGrowingModule(2, 2, device=global_device(), name="layer")
@@ -2140,7 +2129,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         out1 = prev_layer(x)
         _ = layer(out1)
 
-        # Call compute_cross_covariance_update - should cover line 223 (else branch)
+        # Call compute_cross_covariance_update - should cover else branch
         result, samples = layer.compute_cross_covariance_update()
 
         # Verify result shapes and types
@@ -2149,7 +2138,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIsInstance(result, torch.Tensor)
 
     def test_compute_optimal_delta_bias_handling_paths(self):
-        """Test compute_optimal_delta bias handling paths (lines 275-279, 292->298, 304->309)."""
+        """Test compute_optimal_delta bias handling paths."""
         # Create a simpler test that actually works
         layer = LinearGrowingModule(
             3, 2, use_bias=True, device=global_device(), name="layer"
@@ -2164,15 +2153,15 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         loss.backward()
         layer.update_computation()
 
-        # Test compute_optimal_delta - this should work and cover some lines
+        # Test compute_optimal_delta
         layer.compute_optimal_delta()
 
         # Verify layer is still functional
         self.assertIsInstance(layer.optimal_delta_layer, torch.nn.Linear)
 
     def test_compute_m_prev_update_error_conditions_coverage(self):
-        """Test compute_m_prev_update error conditions (line 539, 551-552)."""
-        # Test case 1: No previous module (line 498)
+        """Test compute_m_prev_update error conditions."""
+        # Test case 1: No previous module
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         layer.previous_module = None
 
@@ -2183,7 +2172,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             layer.compute_m_prev_update(desired_activation)
         self.assertIn("No previous module", str(context.exception))
 
-        # Test case 2: Unsupported previous module type (lines 551-552)
+        # Test case 2: Unsupported previous module type
         layer2 = LinearGrowingModule(3, 2, device=global_device(), name="layer2")
         layer2.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
 
@@ -2197,7 +2186,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIn("not implemented yet", str(context.exception))
 
     def test_edge_case_tensor_computations(self):
-        """Test edge cases in tensor computations to cover remaining missing lines."""
+        """Test edge cases in tensor computations."""
         # Create a more complex scenario to trigger remaining edge cases
         layer1 = LinearGrowingModule(3, 2, device=global_device(), name="layer1")
         layer2 = LinearGrowingModule(2, 4, device=global_device(), name="layer2")
@@ -2249,8 +2238,8 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             pass  # Some configurations might not work, that's OK
 
     def test_sub_select_previous_module_error_conditions(self):
-        """Test sub_select_optimal_added_parameters with different previous module types (lines 897-905)."""
-        # Test case 1: Previous module is LinearMergeGrowingModule (should trigger NotImplementedError on line 900)
+        """Test sub_select_optimal_added_parameters with different previous module types."""
+        # Test case 1: Previous module is LinearMergeGrowingModule, should trigger NotImplementedError
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         merge_module = LinearMergeGrowingModule(
             in_features=3, device=global_device(), name="merge"
@@ -2265,7 +2254,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         with self.assertRaises(NotImplementedError):
             layer.sub_select_optimal_added_parameters(1, sub_select_previous=True)
 
-        # Test case 2: Previous module is unsupported type (should trigger lines 902-905)
+        # Test case 2: Previous module is unsupported type, should trigger error
         layer2 = LinearGrowingModule(3, 2, device=global_device(), name="layer2")
         layer2.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
         layer2.extended_input_layer = torch.nn.Linear(2, 2, device=global_device())
@@ -2276,7 +2265,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIn("not implemented yet", str(context.exception))
 
     def test_compute_optimal_added_parameters_update_previous_errors(self):
-        """Test compute_optimal_added_parameters with different previous module types (lines 972-985)."""
+        """Test compute_optimal_added_parameters with different previous module types."""
         # Set up a layer that will reach the update_previous section
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
 
@@ -2300,7 +2289,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             mock_auxiliary_compute, layer
         )
 
-        # Test case 1: Previous module is LinearMergeGrowingModule (should trigger line 977)
+        # Test case 1: Previous module is LinearMergeGrowingModule
         merge_module = LinearMergeGrowingModule(
             in_features=3, device=global_device(), name="merge"
         )
@@ -2309,7 +2298,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         with self.assertRaises(NotImplementedError):
             layer.compute_optimal_added_parameters(update_previous=True)
 
-        # Test case 2: Previous module is unsupported type (should trigger lines 979-982)
+        # Test case 2: Previous module is unsupported type
         class MockLinear(torch.nn.Linear):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -2375,7 +2364,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         object.__setattr__(merge_module, "previous_tensor_s", mock_tensor_s)
         object.__setattr__(merge_module, "previous_tensor_m", mock_tensor_m)
 
-        # This should trigger the LinAlgError exception and force pseudo-inverse (lines 275-279)
+        # This should trigger the LinAlgError exception and force pseudo-inverse
         deltas = merge_module.compute_optimal_delta(
             return_deltas=True, force_pseudo_inverse=False
         )
@@ -2393,12 +2382,9 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIsNotNone(delta_b)  # Should have bias
         self.assertEqual(delta_b.shape, (prev_module.out_features,))
 
-    # DIFFERENTIAL COVERAGE IMPROVEMENTS - BIAS HANDLING PATHS
-    # Previously in TestDifferentialCoveragePhase2 - integrated for better maintainability
-
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_delta_update_true_bias_handling(self, bias):
-        """Test compute_optimal_delta with update=True for both bias cases (lines 292-298, 304-309)
+        """Test compute_optimal_delta with update=True for both bias cases
 
         This test specifically targets the missing differential coverage for the
         bias/no-bias handling paths in compute_optimal_delta method.
@@ -2421,7 +2407,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             merge_module.update_computation()
 
         # Test with update=True to trigger the bias handling paths
-        # This will trigger either lines 292-298 (bias=True) or lines 304-309 (bias=False)
         merge_module.compute_optimal_delta(update=True)
 
         # Verify optimal_delta_layer was created for the previous module
@@ -2431,7 +2416,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
         # Check bias handling based on the module configuration
         if bias:
-            # Lines 292-298: bias=True case
+            # bias=True case
             self.assertTrue(prev_module.optimal_delta_layer.bias is not None)
             self.assertEqual(
                 prev_module.optimal_delta_layer.in_features, prev_module.in_features
@@ -2440,7 +2425,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
                 prev_module.optimal_delta_layer.out_features, prev_module.out_features
             )
         else:
-            # Lines 304-309: bias=False case
+            # bias=False case
             self.assertIsNone(prev_module.optimal_delta_layer.bias)
             self.assertEqual(
                 prev_module.optimal_delta_layer.in_features, prev_module.in_features
@@ -2664,7 +2649,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
                 )
                 layer.previous_module = merge
 
-                # Test activation_gradient property (line 365 fix)
+                # Test activation_gradient property
                 try:
                     grad = layer.activation_gradient
                     if grad is not None:
@@ -2719,7 +2704,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         """Test the modified init_computation method in LinearGrowingModule."""
         layer = LinearGrowingModule(3, 2, device=global_device(), name="test_layer")
 
-        # The init_computation method was modified in the PR
         layer.init_computation()
 
         # Verify the initialization worked
