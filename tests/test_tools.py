@@ -391,7 +391,7 @@ class TestTools(TorchTestCase):
         self.assertEqual(identity_conv.padding, conv.padding)
         self.assertEqual(identity_conv.stride, conv.stride)
         self.assertEqual(identity_conv.dilation, conv.dilation)
-        self.assertFalse(identity_conv.bias is not None)
+        self.assertIsNone(identity_conv.bias)
 
         # Check weight initialization (should be identity in center)
         mid_h, mid_w = conv.kernel_size[0] // 2, conv.kernel_size[1] // 2
