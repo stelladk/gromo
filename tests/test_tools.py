@@ -417,13 +417,13 @@ class TestTools(TorchTestCase):
         expected = sqrt_inverse_matrix_semi_positive(matrix)
         self.assertTrue(torch.allclose(result, expected))
 
-        # Test with preferred_linalg_library set to "magma" (line 35 coverage)
+        # Test with preferred_linalg_library set to "magma"
         if torch.cuda.is_available():
             matrix_cuda = matrix.cuda()
             result_magma = sqrt_inverse_matrix_semi_positive(
                 matrix_cuda, preferred_linalg_library="magma"
             )
-            # Should execute line 35: torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
+            # Should execute line: torch.backends.cuda.preferred_linalg_library(preferred_linalg_library)
             self.assertIsNotNone(result_magma)
             self.assertEqual(result_magma.device.type, "cuda")
 
@@ -441,13 +441,13 @@ class TestTools(TorchTestCase):
             ):
                 mock_eigh.side_effect = torch.linalg.LinAlgError("Mocked error")
 
-                # Test cusolver specific error handling (lines 39-44)
+                # Test cusolver specific error handling
                 with self.assertRaises(ValueError) as context:
                     sqrt_inverse_matrix_semi_positive(
                         matrix, preferred_linalg_library="cusolver"
                     )
 
-                # Should trigger lines 39-44: if cusolver, raise ValueError
+                # Should trigger if cusolver, raise ValueError
                 error_msg = str(context.exception)
                 self.assertIn("CUDA < 12.1", error_msg)
                 self.assertIn("magma", error_msg)
@@ -464,7 +464,7 @@ class TestTools(TorchTestCase):
             original_error = torch.linalg.LinAlgError("Mocked original error")
             mock_eigh.side_effect = original_error
 
-            # Test the else branch in the exception handler (line 45)
+            # Test the else branch in the exception handler
             # We'll patch the preferred_linalg_library check to simulate non-cusolver
             with unittest.mock.patch.object(
                 torch.backends.cuda, "preferred_linalg_library"
@@ -473,12 +473,10 @@ class TestTools(TorchTestCase):
                     sqrt_inverse_matrix_semi_positive(
                         matrix, preferred_linalg_library="default"  # Not cusolver
                     )
-
-                # Should trigger line 45: raise e
                 self.assertEqual(str(context.exception), "Mocked original error")
 
     def test_compute_optimal_added_parameters_svd_error_handling(self):
-        """Test SVD LinAlgError handling and debug output (Lines 108-116)"""
+        """Test SVD LinAlgError handling and debug output"""
         matrix_s = torch.eye(3) * 2.0
         matrix_n = torch.randn(3, 2)
 
@@ -490,13 +488,13 @@ class TestTools(TorchTestCase):
         u_real, s_real, vt_real = torch.linalg.svd(matrix_p, full_matrices=False)
         successful_result = (u_real, s_real, vt_real)
 
-        # Capture stdout to verify debug prints (lines 109-115)
+        # Capture stdout to verify debug prints
         captured_output = io.StringIO()
 
         with unittest.mock.patch("torch.linalg.svd") as mock_svd:
             mock_svd.side_effect = [
                 torch.linalg.LinAlgError("Mocked SVD error"),  # First call fails
-                successful_result,  # Second call succeeds (line 116)
+                successful_result,  # Second call succeeds
             ]
 
             with unittest.mock.patch("sys.stdout", captured_output):
@@ -504,7 +502,7 @@ class TestTools(TorchTestCase):
                     matrix_s, matrix_n
                 )
 
-            # Verify debug output was printed (lines 109-115)
+            # Verify debug output was printed
             output = captured_output.getvalue()
             self.assertIn("Warning: An error occurred during the SVD computation", output)
             self.assertIn("matrix_s:", output)
@@ -524,9 +522,6 @@ class TestTools(TorchTestCase):
         """Test that matrix information is correctly printed in SVD error scenario"""
         matrix_s = torch.eye(2) * 3.0
         matrix_n = torch.randn(2, 4)
-
-        import io
-        import unittest.mock
 
         # Create successful result BEFORE mocking
         dummy_matrix = torch.randn(2, 4)  # Same shape as matrix_p would be
