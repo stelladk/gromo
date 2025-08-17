@@ -55,22 +55,23 @@ class TestUtils(unittest.TestCase):
         # Test with each available device
         for device_name in self.available_devices:
             with self.subTest(device=device_name):
-                mock_obj._config_data = {"device": device_name}
-
                 # Test with explicit device argument (highest precedence)
-                device = get_correct_device(mock_obj, "cpu")
-                self.assertEqual(device, torch.device("cpu"))
-                self.assertEqual(global_device(), torch.device("cpu"))
+                mock_obj._config_data = {}
+                device = get_correct_device(mock_obj, device=device_name)
+                self.assertEqual(device, torch.device(device_name))
 
                 # Test with None device - should use config
+                mock_obj._config_data = {"device": device_name}
                 device = get_correct_device(mock_obj, None)
                 self.assertEqual(device, torch.device(device_name))
 
-        # Test with config missing device key
-        mock_obj._config_data = {}
-        original_device = global_device()
-        device = get_correct_device(mock_obj, None)
-        self.assertEqual(device, original_device)
+                # Test with None device and empty config - should use global device
+                original_device = global_device()
+                set_device(device_name)  # Set to current device
+                mock_obj._config_data = {}
+                device = get_correct_device(mock_obj, None)
+                self.assertEqual(device, global_device())
+                set_device(original_device)  # Reset to original device
 
     def test_torch_zeros(self) -> None:
         # Test on each available device

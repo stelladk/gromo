@@ -1,3 +1,4 @@
+import types
 from copy import deepcopy
 from typing import Any, Dict, Tuple
 from unittest import TestCase, main
@@ -1043,7 +1044,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     def test_multiple_successors_warning(self):
         """Test warning for multiple successors (lines 511-513)"""
-        from unittest.mock import patch
 
         # Create layer
         layer = LinearGrowingModule(3, 2, device=global_device(), name="test_layer")
@@ -2297,8 +2297,6 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             return alpha, omega, eigenvalues
 
         # Bind the mock method to the layer instance
-        import types
-
         layer._auxiliary_compute_alpha_omega = types.MethodType(
             mock_auxiliary_compute, layer
         )

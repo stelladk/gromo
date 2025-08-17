@@ -531,13 +531,10 @@ class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
         layer2.previous_module = layer1
 
         # Initialize computations
-        layer1.init_computation()
         layer2.init_computation()
 
         # Forward pass with multiple samples
         x = torch.randn(10, 3, device=global_device())
-        layer1.store_input = True
-        layer2.store_input = True
 
         out1 = layer1(x)
         out2 = layer2(out1)
@@ -547,25 +544,14 @@ class TestMergeGrowingModuleUpdateComputation(TorchTestCase):
         loss.backward()
 
         # Update computations
-        layer1.update_computation()
         layer2.update_computation()
 
-        # Compute optimal deltas (needed for projected_v_goal)
-        layer1.compute_optimal_delta()
+        # Compute layer2 optimal delta (needed for projected_v_goal)
         layer2.compute_optimal_delta()
+        n_update1, n_samples1 = layer1.compute_n_update()
 
-        # Test the fixed compute_n_update method
-        try:
-            n_update1, n_samples1 = layer1.compute_n_update()
-            n_update2, n_samples2 = layer2.compute_n_update()
-
-            self.assertIsInstance(n_update1, torch.Tensor)
-            self.assertIsInstance(n_update2, torch.Tensor)
-            self.assertEqual(n_samples1, 10)
-            self.assertEqual(n_samples2, 10)
-        except Exception:
-            # Expected possible failure for incomplete setup
-            pass
+        self.assertIsInstance(n_update1, torch.Tensor)
+        self.assertEqual(n_samples1, 10)
 
     def test_simple_growing_module_coverage(self):
         """Ensure basic GrowingModule functionality is covered."""
