@@ -1,5 +1,5 @@
-import io
 import contextlib
+import io
 import unittest.mock
 from unittest import TestCase, main
 
