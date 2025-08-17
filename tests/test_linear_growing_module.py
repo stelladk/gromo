@@ -2024,7 +2024,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertEqual(input_extended.shape[-1], expected_extended_features)
 
     def test_tensor_s_growth_error_conditions(self):
-        """Test error conditions in tensor_s_growth property (line 602)."""
+        """Test error conditions in tensor_s_growth property."""
         # Test case 1: No previous module
         layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
         layer.previous_module = None
@@ -2074,7 +2074,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
             _ = layer.activation_gradient
 
     def test_activation_gradient_growing_module(self):
-        """Test activation gradient computation with GrowingModule as previous module (line 360)."""
+        """Test activation gradient computation with GrowingModule as previous module."""
 
         # Create a mock GrowingModule with post_layer_function
         previous_module = LinearGrowingModule(3, 4, device=global_device(), name="prev")
@@ -2313,7 +2313,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         self.assertIn("not implemented yet", str(context.exception))
 
     def test_force_pseudo_inverse_path_coverage(self):
-        """Test specific paths in compute_optimal_delta to cover remaining missing lines."""
+        """Test specific paths in compute_optimal_delta."""
         # Create a scenario that will trigger different paths in compute_optimal_delta
         merge_module = LinearMergeGrowingModule(
             in_features=2, device=global_device(), name="merge"
@@ -2461,7 +2461,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
 
     def test_projected_v_goal_fix_differential_coverage(self):
         """Test the fix from projected_desired_update() to projected_v_goal() in compute_n_update for differential coverage."""
-        # Create a chain of modules to test the fix in lines that were changed
+        # Create a chain of modules
         layer1 = LinearGrowingModule(3, 4, device=global_device(), name="l1")
         layer2 = LinearGrowingModule(4, 2, device=global_device(), name="l2")
 
@@ -2470,14 +2470,10 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer2.previous_module = layer1
 
         # Initialize computations
-        layer1.init_computation()
         layer2.init_computation()
 
         # Forward pass with multiple samples
         x = torch.randn(5, 3, device=global_device())
-        layer1.store_input = True
-        layer2.store_input = True
-
         out1 = layer1(x)
         out2 = layer2(out1)
 
@@ -2486,28 +2482,19 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         loss.backward()
 
         # Update computations
-        layer1.update_computation()
         layer2.update_computation()
 
         # Compute optimal deltas (needed for projected_v_goal)
-        layer1.compute_optimal_delta()
         layer2.compute_optimal_delta()
 
-        # Test the fixed compute_n_update method (the lines that were changed)
-        try:
-            n_update1, n_samples1 = layer1.compute_n_update()
-            n_update2, n_samples2 = layer2.compute_n_update()
+        # Test the fixed compute_n_update method
+        n_update1, n_samples1 = layer1.compute_n_update()
 
-            self.assertIsInstance(n_update1, torch.Tensor)
-            self.assertIsInstance(n_update2, torch.Tensor)
-            self.assertEqual(n_samples1, 5)
-            self.assertEqual(n_samples2, 5)
-        except Exception as e:
-            # Even if it fails, we've covered the changed lines
-            print(f"Expected possible failure in compute_n_update: {e}")
+        self.assertIsInstance(n_update1, torch.Tensor)
+        self.assertEqual(n_samples1, 5)
 
-    def test_tensor_scalar_fix_differential_coverage(self):
-        """Test the tensor scalar fix from torch.tensor([1e-5]) to torch.tensor(1e-5) for differential coverage."""
+    def test_tensor_scalar(self):
+        """Test the tensor scalar fix from torch.tensor([1e-5]) to torch.tensor(1e-5)."""
         # Multiple configurations to ensure the fix is covered
         configs = [(2, 3), (1, 1), (4, 2)]
 
@@ -2535,39 +2522,31 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         layer = LinearGrowingModule(3, 2, device=global_device())
 
         # Test input feature addition (changed documentation and assertions)
-        try:
-            layer.add_parameters(
-                matrix_extension=torch.randn(
-                    2, 2, device=global_device()
-                ),  # (out_features, added_in_features)
-                bias_extension=None,
-                added_in_features=2,
-                added_out_features=0,
-            )
-            # Verify the addition worked
-            self.assertEqual(layer.weight.shape[1], 5)  # 3 + 2
-        except Exception:
-            # Even if it fails, we've covered the lines
-            pass
+        layer.add_parameters(
+            matrix_extension=torch.randn(
+                2, 2, device=global_device()
+            ),  # (out_features, added_in_features)
+            bias_extension=None,
+            added_in_features=2,
+            added_out_features=0,
+        )
+        # Verify the addition worked
+        self.assertEqual(layer.weight.shape[1], 5)  # 3 + 2
 
         # Test output feature addition (changed documentation and assertions)
         layer2 = LinearGrowingModule(3, 2, device=global_device())
-        try:
-            layer2.add_parameters(
-                matrix_extension=torch.randn(
-                    1, 3, device=global_device()
-                ),  # (added_out_features, in_features)
-                bias_extension=torch.randn(
-                    1, device=global_device()
-                ),  # (added_out_features,)
-                added_in_features=0,
-                added_out_features=1,
-            )
-            # Verify the addition worked
-            self.assertEqual(layer2.weight.shape[0], 3)  # 2 + 1
-        except Exception:
-            # Even if it fails, we've covered the lines
-            pass
+        layer2.add_parameters(
+            matrix_extension=torch.randn(
+                1, 3, device=global_device()
+            ),  # (added_out_features, in_features)
+            bias_extension=torch.randn(
+                1, device=global_device()
+            ),  # (added_out_features,)
+            added_in_features=0,
+            added_out_features=1,
+        )
+        # Verify the addition worked
+        self.assertEqual(layer2.weight.shape[0], 3)  # 2 + 1
 
     def test_edge_case_minimal_dimensions(self):
         """Test LinearGrowingModule with minimal dimensions for comprehensive edge case coverage."""
@@ -2625,7 +2604,7 @@ class TestLinearMergeGrowingModule(TorchTestCase):
         loss.backward()
 
         prev.update_computation()
-        merge_module.update_computation()  # Hit all the differential coverage lines
+        merge_module.update_computation()
 
         # Verify comprehensive test completed
         self.assertTrue(True)  # If we get here, all lines were executed successfully
