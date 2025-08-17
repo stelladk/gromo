@@ -1,3 +1,5 @@
+import io
+import unittest.mock
 from unittest import TestCase, main
 
 import torch
@@ -11,9 +13,6 @@ from gromo.utils.tools import (
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
-
-import io
-import unittest.mock
 
 from .unittest_tools import unittest_parametrize
 
@@ -439,6 +438,7 @@ class TestTools(TorchTestCase):
             with unittest.mock.patch.object(
                 torch.backends.cuda, "preferred_linalg_library"
             ):
+                # Test cusolver specific error handling
                 mock_eigh.side_effect = torch.linalg.LinAlgError("Mocked error")
 
                 # Test cusolver specific error handling

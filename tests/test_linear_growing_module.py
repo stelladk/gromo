@@ -1041,7 +1041,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         with self.assertRaises(ValueError):
             _ = self.demo_layers[True][0].tensor_s_growth
 
-
     def test_multiple_successors_warning(self):
         """Test warning for multiple successors"""
 
@@ -1112,7 +1111,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             return_value=torch.randn(2, 3, device=global_device()),
         ):
 
-
             p_result, p_samples = layer.compute_cross_covariance_update()
 
             self.assertIsInstance(p_result, torch.Tensor)
@@ -1126,7 +1124,9 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         """Test the else branch in LinearMergeGrowingModule compute_s_update"""
         # Create a LinearMergeGrowingModule and set bias=False to trigger the else branch
         merge_layer = LinearMergeGrowingModule(in_features=3, device=global_device())
-        merge_layer.use_bias = False  # Set to False to trigger else branch in compute_s_update
+        merge_layer.use_bias = (
+            False  # Set to False to trigger else branch in compute_s_update
+        )
 
         # Set up proper activity storage
         merge_layer.store_activity = True
