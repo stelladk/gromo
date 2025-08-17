@@ -12,6 +12,9 @@ from gromo.utils.tools import (
 )
 from tests.torch_unittest import TorchTestCase
 
+import io
+import unittest.mock
+
 from .unittest_tools import unittest_parametrize
 
 
@@ -480,9 +483,6 @@ class TestTools(TorchTestCase):
         matrix_n = torch.randn(3, 2)
 
         # Mock the SVD to trigger LinAlgError on first call, succeed on second
-        import io
-        import unittest.mock
-
         # Create a proper successful result with correct values by computing SVD on the actual matrix_p
         # Replicate the computation of matrix_p as in compute_optimal_added_parameters
         matrix_s_inverse_sqrt = torch.linalg.inv(torch.linalg.cholesky(matrix_s))
