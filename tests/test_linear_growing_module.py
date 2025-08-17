@@ -1070,7 +1070,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             return_value=torch.randn(2, 3, device=global_device()),
         ):
 
-            # This should trigger the warning at lines 511-513
+            # This should trigger a warning
             desired_activation = torch.randn(2, 2, device=global_device())
             with self.assertWarns(UserWarning) as warning_context:
                 layer.compute_m_prev_update(desired_activation)
