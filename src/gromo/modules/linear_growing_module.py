@@ -362,11 +362,11 @@ class LinearGrowingModule(GrowingModule):
         """
         if isinstance(self.previous_module, GrowingModule):
             return torch.func.grad(self.previous_module.post_layer_function)(
-                torch.tensor(GRADIENT_COMPUTATION_EPSILON)
+                torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device)
             )
         elif isinstance(self.previous_module, MergeGrowingModule):
             return torch.func.grad(self.previous_module.post_merge_function)(
-                torch.tensor(GRADIENT_COMPUTATION_EPSILON)
+                torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device)
             )
         else:
             raise NotImplementedError(

@@ -1,4 +1,5 @@
 import io
+import contextlib
 import unittest.mock
 from unittest import TestCase, main
 
@@ -537,7 +538,7 @@ class TestTools(TorchTestCase):
                 successful_result,
             ]
 
-            with unittest.mock.patch("sys.stdout", captured_output):
+            with contextlib.redirect_stdout(captured_output):
                 compute_optimal_added_parameters(matrix_s, matrix_n)
 
             output = captured_output.getvalue()
