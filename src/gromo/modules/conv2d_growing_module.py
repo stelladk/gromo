@@ -1090,7 +1090,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
     @property
     def tensor_s_growth(self) -> TensorStatistic:
         """
-        Supercharge `tensor_s_growth` to redirect to `self._tensor_s_growth` instead of `self.previous_module.tensor_s`.
+        Override `tensor_s_growth` to redirect to `self._tensor_s_growth` instead of `self.previous_module.tensor_s`.
         """
         return self._tensor_s_growth
 
