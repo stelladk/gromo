@@ -442,7 +442,7 @@ class LinearGrowingModule(GrowingModule):
                 torch.flatten(input_extended, 0, -2),
                 torch.flatten(input_extended, 0, -2),
             ),
-            torch.tensor(self.input.shape[:-1]).prod().int().item(),
+            self.input.shape[0],
         )
 
     def compute_m_update(
@@ -474,7 +474,7 @@ class LinearGrowingModule(GrowingModule):
                 torch.flatten(self.input_extended, 0, -2),
                 torch.flatten(desired_activation, 0, -2),
             ),
-            torch.tensor(self.input.shape[:-1]).prod().int().item(),
+            self.input.shape[0],
         )
 
     def compute_m_prev_update(
@@ -508,7 +508,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(desired_activation, 0, -2),
                 ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
+                self.input.shape[0],
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             if self.previous_module.number_of_successors > 1:
@@ -549,7 +549,7 @@ class LinearGrowingModule(GrowingModule):
                     torch.flatten(self.previous_module.input_extended, 0, -2),
                     torch.flatten(self.input_extended, 0, -2),
                 ),
-                torch.tensor(self.input.shape[:-1]).prod().int().item(),
+                self.input.shape[0],
             )
         elif isinstance(self.previous_module, LinearMergeGrowingModule):
             return (
