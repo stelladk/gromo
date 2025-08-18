@@ -626,6 +626,55 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertEqual(demo_couple[1].extended_input_layer.in_channels, 3)
         self.assertEqual(demo_couple[0].extended_output_layer.out_channels, 3)
 
+        @unittest_parametrize(({"bias": True}, {"bias": False}))
+        def test_compute_optimal_added_parameters_use_projected_gradient_false(self, bias: bool):
+            """
+            Explicitly test the use_projected_gradient=False branch for coverage.
+            """
+            demo_couple = self.demo_couple[bias]
+            # demo_couple[0].store_input = True
+            demo_couple[1].init_computation()
+            # demo_couple[1].tensor_s_growth.init()
+
+            y = demo_couple[0](self.input_x)
+            y = demo_couple[1](y)
+            loss = torch.norm(y)
+            loss.backward()
+
+            demo_couple[1].update_computation()
+            # demo_couple[1].tensor_s_growth.update()
+
+            # demo_couple[1].compute_optimal_delta()
+            # Call with use_projected_gradient=False
+            alpha, alpha_b, omega, eigenvalues = demo_couple[1].compute_optimal_added_parameters(use_projected_gradient=False)
+
+            self.assertShapeEqual(
+                alpha,
+                (
+                    -1,
+                    demo_couple[0].in_channels,
+                    demo_couple[0].kernel_size[0],
+                    demo_couple[0].kernel_size[1],
+                ),
+            )
+            k = alpha.size(0)
+            if bias:
+                self.assertShapeEqual(alpha_b, (k,))
+            else:
+                self.assertIsNone(alpha_b)
+
+            self.assertShapeEqual(
+                omega,
+                (
+                    demo_couple[1].out_channels,
+                    k,
+                    demo_couple[1].kernel_size[0],
+                    demo_couple[1].kernel_size[1],
+                ),
+            )
+
+            self.assertShapeEqual(eigenvalues, (k,))
+
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_added_parameters_empirical(self, bias: bool):
         demo_couple = self.demo_couple[bias]
