@@ -1,5 +1,5 @@
-import warnings
 import types
+import warnings
 from copy import deepcopy
 from typing import Any, Dict, Tuple
 from unittest import TestCase, main, mock
@@ -1347,8 +1347,10 @@ class TestLinearGrowingModuleEdgeCases(TorchTestCase):
         self.in_features = 5
         self.out_features = 3
         self.batch_size = 4
-        self.test_input = torch.randn(self.batch_size, self.in_features, device=global_device())
-        
+        self.test_input = torch.randn(
+            self.batch_size, self.in_features, device=global_device()
+        )
+
     def create_layer(self, use_bias=True, allow_growing=False, previous_module=None):
         """Helper method to create a layer with the given configuration."""
         return LinearGrowingModule(
@@ -1357,15 +1359,15 @@ class TestLinearGrowingModuleEdgeCases(TorchTestCase):
             use_bias=use_bias,
             allow_growing=allow_growing,
             previous_module=previous_module,
-            device=global_device()
+            device=global_device(),
         )
-        
+
     def test_initialization(self):
         # Test initialization with different configurations
         for use_bias in [True, False]:
             # When allow_growing is True, we need a previous module
             previous_layer = self.create_layer()
-            
+
             for allow_growing in [False]:  # Test only allow_growing=False for now
                 with self.subTest(use_bias=use_bias, allow_growing=allow_growing):
                     # When allow_growing is True, we need to provide a previous module
@@ -1373,9 +1375,9 @@ class TestLinearGrowingModuleEdgeCases(TorchTestCase):
                     layer = self.create_layer(
                         use_bias=use_bias,
                         allow_growing=allow_growing,
-                        previous_module=prev_module
+                        previous_module=prev_module,
                     )
-                    
+
                     self.assertEqual(layer.in_features, self.in_features)
                     self.assertEqual(layer.out_features, self.out_features)
                     self.assertEqual(layer.use_bias, use_bias)
@@ -1391,107 +1393,113 @@ class TestLinearGrowingModuleEdgeCases(TorchTestCase):
             layer = self.create_layer(use_bias=use_bias)
             output = layer(self.test_input)
             self.assertEqual(output.shape, (self.batch_size, self.out_features))
-            
+
     def test_add_parameters_validation(self):
         layer = self.create_layer(use_bias=True)
-        
+
         # Test invalid input: adding both input and output features
         with self.assertRaises(AssertionError):
             layer.add_parameters(
                 matrix_extension=None,
                 bias_extension=None,
                 added_in_features=1,
-                added_out_features=1
+                added_out_features=1,
             )
-            
+
         # Test invalid matrix extension shape
         with self.assertRaises(AssertionError):
-            invalid_matrix = torch.randn(self.out_features + 1, self.in_features + 1, device=global_device())
+            invalid_matrix = torch.randn(
+                self.out_features + 1, self.in_features + 1, device=global_device()
+            )
             layer.add_parameters(
                 matrix_extension=invalid_matrix,
                 bias_extension=None,
                 added_in_features=1,
-                added_out_features=0
+                added_out_features=0,
             )
-            
+
     def test_compute_optimal_added_parameters_edge_cases(self):
         # Test with a layer that has no previous module
         layer = LinearGrowingModule(
             in_features=self.in_features,
             out_features=self.out_features,
             use_bias=True,
-            device=global_device()
+            device=global_device(),
         )
-        
+
         # This should raise an error since there's no previous layer to compute optimal parameters
         with self.assertRaises(ValueError):
             layer.compute_optimal_added_parameters()
-            
+
     def test_tensor_n_property(self):
         # Test the tensor_n property
         layer = self.create_layer(use_bias=True)
-        
+
         # Create mock data with correct dimensions
         # tensor_m_prev should be (in_features + use_bias, out_features)
-        mock_m_prev = torch.randn(self.in_features + 1, self.out_features, device=global_device())
-        
+        mock_m_prev = torch.randn(
+            self.in_features + 1, self.out_features, device=global_device()
+        )
+
         # cross_covariance should be (in_features + use_bias, in_features + use_bias)
         cross_cov = torch.eye(self.in_features + 1, device=global_device())
-        
+
         # delta_raw should be (out_features, in_features + use_bias) based on the assertion in tensor_n
-        delta_raw = torch.zeros(self.out_features, self.in_features + 1, device=global_device())
-        
+        delta_raw = torch.zeros(
+            self.out_features, self.in_features + 1, device=global_device()
+        )
+
         # Create a mock tensor_statistic that returns our mock_data
         class MockTensorStatistic:
             def __init__(self, data):
                 self._data = data
                 self.samples = 1  # Pretend we have samples
-                
+
             def __call__(self):
                 return self._data
-                
+
             def update(self, *args, **kwargs):
                 pass
-        
+
         # Create mock statistics with correct shapes
         layer.tensor_m_prev = MockTensorStatistic(mock_m_prev)
         layer.cross_covariance = MockTensorStatistic(cross_cov)
-        
+
         # Set delta_raw and mock the compute_optimal_added_parameters method
         layer.delta_raw = delta_raw
-        
+
         # Mock the compute_cross_covariance_update method
         layer.compute_cross_covariance_update = lambda: (cross_cov, 1)
-        
+
         # Mock the optimal_delta method to return delta_raw to match the assertion
         layer.optimal_delta = lambda: delta_raw
-        
+
         # Compute tensor_n and check its shape
         tensor_n = layer.tensor_n
         self.assertEqual(tensor_n.shape, (self.in_features + 1, self.out_features))
-        
+
     def test_initialization_with_allow_growing(self):
         # Test that allow_growing=True requires a previous module
         with self.assertRaises(AssertionError):
             self.create_layer(allow_growing=True)  # No previous module
-            
+
         # Test with a previous module - should not raise
         previous_layer = self.create_layer()
         layer = self.create_layer(allow_growing=True, previous_module=previous_layer)
         self.assertTrue(layer._allow_growing)
-    
+
     def test_initialization_edge_cases(self):
         """Test initialization with minimum valid values."""
         # Test with minimum valid values (1 feature)
         layer = LinearGrowingModule(1, 1, device=global_device())
         self.assertEqual(layer.in_features, 1)
         self.assertEqual(layer.out_features, 1)
-        
+
         # Test with different input/output sizes
         layer = LinearGrowingModule(10, 1, device=global_device())
         self.assertEqual(layer.in_features, 10)
         self.assertEqual(layer.out_features, 1)
-        
+
         layer = LinearGrowingModule(1, 10, device=global_device())
         self.assertEqual(layer.in_features, 1)
         self.assertEqual(layer.out_features, 10)
@@ -1499,171 +1507,215 @@ class TestLinearGrowingModuleEdgeCases(TorchTestCase):
     def test_invalid_parameter_combinations(self):
         """Test invalid parameter combinations in add_parameters."""
         layer = self.create_layer(use_bias=True)
-        
+
         with self.assertRaises(AssertionError):
             # Both added_in_features and added_out_features are zero
             layer.add_parameters(None, None, 0, 0)
-        
+
         with self.assertRaises(AssertionError):
             # Both added_in_features and added_out_features are positive
             layer.add_parameters(None, None, 1, 1)
-        
+
         # Test with invalid weight matrix shapes
         with self.assertRaises(AssertionError):
             # Wrong shape for matrix_extension when adding input features
-            invalid_weights = torch.randn(self.out_features + 1, self.in_features, device=global_device())
+            invalid_weights = torch.randn(
+                self.out_features + 1, self.in_features, device=global_device()
+            )
             layer.add_parameters(invalid_weights, None, added_in_features=1)
 
     def test_compute_optimal_added_parameters(self):
         """Test computation of optimal added parameters."""
         # Skip this test as it requires proper tensor statistics setup
         # that's not easily done in a unit test
-        self.skipTest("Skipping test_compute_optimal_added_parameters as it requires tensor statistics setup")
+        self.skipTest(
+            "Skipping test_compute_optimal_added_parameters as it requires tensor statistics setup"
+        )
 
     def test_add_parameters(self):
         """Test adding input and output features."""
         # Test adding input features
         layer = self.create_layer(use_bias=True)
         original_weight = layer.layer.weight.clone()
-        
+
         # Add input features
         added_inputs = 2
         # The matrix_extension should have shape (out_features, added_in_features)
         new_weights = torch.randn(self.out_features, added_inputs, device=global_device())
-        
+
         # The warning is expected here due to the size change
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             layer.add_parameters(new_weights, None, added_in_features=added_inputs)
-        
+
         # After adding input features, the weight matrix should have shape (out_features, in_features + added_inputs)
         # and in_features should be updated to in_features + added_inputs
         expected_in_features = self.in_features + added_inputs
         expected_shape = (self.out_features, expected_in_features)
-        self.assertEqual(layer.layer.weight.shape, expected_shape,
-                        f"Expected shape {expected_shape}, got {layer.layer.weight.shape}")
-        self.assertEqual(layer.in_features, expected_in_features,
-                        f"Expected in_features to be updated to {expected_in_features}, got {layer.in_features}")
-        
+        self.assertEqual(
+            layer.layer.weight.shape,
+            expected_shape,
+            f"Expected shape {expected_shape}, got {layer.layer.weight.shape}",
+        )
+        self.assertEqual(
+            layer.in_features,
+            expected_in_features,
+            f"Expected in_features to be updated to {expected_in_features}, got {layer.in_features}",
+        )
+
         # Check that the original weights are preserved in the first in_features - added_inputs columns
-        self.assertTrue(torch.allclose(
-            layer.layer.weight[:, :self.in_features - added_inputs],
-            original_weight[:, :self.in_features - added_inputs],
-            atol=1e-6
-        ), "Original weights were not preserved when adding input features")
-        
+        self.assertTrue(
+            torch.allclose(
+                layer.layer.weight[:, : self.in_features - added_inputs],
+                original_weight[:, : self.in_features - added_inputs],
+                atol=1e-6,
+            ),
+            "Original weights were not preserved when adding input features",
+        )
+
         # Check that the new weights were added correctly in the last added_inputs columns
-        self.assertTrue(torch.allclose(
-            layer.layer.weight[:, -added_inputs:],
-            new_weights,
-            atol=1e-6
-        ), "New weights were not added correctly when adding input features")
-        
+        self.assertTrue(
+            torch.allclose(layer.layer.weight[:, -added_inputs:], new_weights, atol=1e-6),
+            "New weights were not added correctly when adding input features",
+        )
+
         # Test adding output features - need to create a new layer to avoid dimension conflicts
         layer_out = self.create_layer(use_bias=True)
         original_out_weight = layer_out.layer.weight.clone()
-        original_out_bias = layer_out.layer.bias.clone() if layer_out.layer.bias is not None else None
-        
+        original_out_bias = (
+            layer_out.layer.bias.clone() if layer_out.layer.bias is not None else None
+        )
+
         # Test adding output features
         added_outputs = 2
         # The matrix_extension should have shape (added_out_features, in_features)
-        new_out_weights = torch.randn(added_outputs, self.in_features, device=global_device())
+        new_out_weights = torch.randn(
+            added_outputs, self.in_features, device=global_device()
+        )
         # The bias_extension should have shape (added_out_features,)
         new_bias_values = torch.randn(added_outputs, device=global_device())
-        
+
         # The warning is expected here due to the size change
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            layer_out.add_parameters(new_out_weights, new_bias_values, added_out_features=added_outputs)
-        
+            layer_out.add_parameters(
+                new_out_weights, new_bias_values, added_out_features=added_outputs
+            )
+
         # The weight matrix should now have shape (out_features + added_outputs, in_features)
         expected_shape = (self.out_features + added_outputs, self.in_features)
-        self.assertEqual(layer_out.layer.weight.shape, expected_shape,
-                        f"Expected shape {expected_shape}, got {layer_out.layer.weight.shape}")
-        
+        self.assertEqual(
+            layer_out.layer.weight.shape,
+            expected_shape,
+            f"Expected shape {expected_shape}, got {layer_out.layer.weight.shape}",
+        )
+
         # Check that the original weights are preserved in the first out_features rows
-        self.assertTrue(torch.allclose(
-            layer_out.layer.weight[:self.out_features, :],
-            original_out_weight,
-            atol=1e-6
-        ), "Original weights were not preserved when adding output features")
-        
+        self.assertTrue(
+            torch.allclose(
+                layer_out.layer.weight[: self.out_features, :],
+                original_out_weight,
+                atol=1e-6,
+            ),
+            "Original weights were not preserved when adding output features",
+        )
+
         # Check that the new weights were added correctly in the last added_outputs rows
-        self.assertTrue(torch.allclose(
-            layer_out.layer.weight[self.out_features:, :],
-            new_out_weights,
-            atol=1e-6
-        ), f"New weights were not added correctly when adding output features. Expected shape {new_out_weights.shape}, got {layer_out.layer.weight[self.out_features:, :].shape}")
-        
+        self.assertTrue(
+            torch.allclose(
+                layer_out.layer.weight[self.out_features :, :], new_out_weights, atol=1e-6
+            ),
+            f"New weights were not added correctly when adding output features. Expected shape {new_out_weights.shape}, got {layer_out.layer.weight[self.out_features:, :].shape}",
+        )
+
         # Check that the bias was extended correctly
-        self.assertEqual(layer_out.layer.bias.shape[0], self.out_features + added_outputs,
-                        f"Expected bias shape ({(self.out_features + added_outputs,)}), got {layer_out.layer.bias.shape}")
-        
+        self.assertEqual(
+            layer_out.layer.bias.shape[0],
+            self.out_features + added_outputs,
+            f"Expected bias shape ({(self.out_features + added_outputs,)}), got {layer_out.layer.bias.shape}",
+        )
+
         if original_out_bias is not None:
             # Check that the original bias values are preserved in the first out_features positions
-            self.assertTrue(torch.allclose(
-                layer_out.layer.bias[:self.out_features],
-                original_out_bias,
-                atol=1e-6
-            ), "Original bias values were not preserved when adding output features")
-        
+            self.assertTrue(
+                torch.allclose(
+                    layer_out.layer.bias[: self.out_features],
+                    original_out_bias,
+                    atol=1e-6,
+                ),
+                "Original bias values were not preserved when adding output features",
+            )
+
         # Check that the original bias values are preserved in the first out_features positions
         if original_out_bias is not None:
-            self.assertTrue(torch.allclose(
-                layer_out.layer.bias[:self.out_features],
-                original_out_bias,
-                atol=1e-6
-            ), "Original bias values were not preserved when adding output features")
-        
+            self.assertTrue(
+                torch.allclose(
+                    layer_out.layer.bias[: self.out_features],
+                    original_out_bias,
+                    atol=1e-6,
+                ),
+                "Original bias values were not preserved when adding output features",
+            )
+
         # Check that the new bias values were set correctly in the last added_outputs positions
-        self.assertTrue(torch.allclose(
-            layer_out.layer.bias[-added_outputs:],
-            new_bias_values,
-            atol=1e-6
-        ), f"New bias values were not set correctly when adding output features. Expected {new_bias_values}, got {layer_out.layer.bias[-added_outputs:]}")
+        self.assertTrue(
+            torch.allclose(
+                layer_out.layer.bias[-added_outputs:], new_bias_values, atol=1e-6
+            ),
+            f"New bias values were not set correctly when adding output features. Expected {new_bias_values}, got {layer_out.layer.bias[-added_outputs:]}",
+        )
 
     def test_layer_extension_methods(self):
         """Test layer_in_extension and layer_out_extension methods."""
+
         # Create a simple mock previous module to satisfy the growing requirement
         class MockPreviousModule(torch.nn.Module):
             def __init__(self, out_features):
                 super().__init__()
                 self.out_features = out_features
-            
+
             def forward(self, x):
                 return x
-        
+
         # Create layer with mock previous module
         layer = self.create_layer(use_bias=True, allow_growing=False)
-        
+
         # Test layer_in_extension - needs to be 2D with shape (out_features, num_new_features)
         extension = torch.randn(self.out_features, 2, device=global_device())
-        
+
         # The layer_in_extension method modifies the layer in-place, so we need to check the weight shapes
         original_weight = layer.layer.weight.clone()
         original_bias = layer.layer.bias.clone() if layer.use_bias else None
-        
+
         # The method modifies the layer in-place and returns None
         result = layer.layer_in_extension(extension)
         self.assertIsNone(result)  # Should return None
-        
+
         # Check the layer was modified correctly
-        self.assertEqual(layer.layer.weight.shape, (self.out_features, self.in_features + 2))
-        self.assertTrue(torch.allclose(layer.layer.weight[:, :self.in_features], original_weight))
-        
+        self.assertEqual(
+            layer.layer.weight.shape, (self.out_features, self.in_features + 2)
+        )
+        self.assertTrue(
+            torch.allclose(layer.layer.weight[:, : self.in_features], original_weight)
+        )
+
         # Reset for output extension test
         layer = self.create_layer(use_bias=True, allow_growing=False)
-        
+
         # Test layer_out_extension
-        out_extension = torch.randn(2, self.in_features, device=global_device())  # Adding 2 output features
+        out_extension = torch.randn(
+            2, self.in_features, device=global_device()
+        )  # Adding 2 output features
         bias_extension = torch.randn(2, device=global_device())
-        
+
         # The method modifies the layer in-place and returns None
         result = layer.layer_out_extension(out_extension, bias_extension)
         self.assertIsNone(result)  # Should return None
-        
+
         # Check the layer was modified correctly
-        self.assertEqual(layer.layer.weight.shape, (self.out_features + 2, self.in_features))
+        self.assertEqual(
+            layer.layer.weight.shape, (self.out_features + 2, self.in_features)
+        )
         if layer.use_bias:
             self.assertEqual(layer.layer.bias.shape[0], self.out_features + 2)
 
@@ -1671,7 +1723,10 @@ class TestLinearGrowingModuleEdgeCases(TorchTestCase):
         """Test sub-selection of optimal added parameters."""
         # Skip this test as it requires proper layer extension setup
         # that's not easily done in a unit test
-        self.skipTest("Skipping test_sub_select_optimal_added_parameters as it requires extended layer setup")
+        self.skipTest(
+            "Skipping test_sub_select_optimal_added_parameters as it requires extended layer setup"
+        )
+
 
 if __name__ == "__main__":
     main()
