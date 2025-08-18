@@ -781,18 +781,18 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             self.delta_raw, torch.Tensor
         ), f"The optimal delta should be a tensor for {self.name}, is {type(self.delta_raw)}."
         assert (
-            self.delta_raw.shape[0]
+            self.delta_raw.shape[1]
             == self.in_channels * self.kernel_size[0] * self.kernel_size[1]
             + self.use_bias
         ), (
-            f"The delta should have shape ({self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, ...)"
-            f" but got {self.delta_raw.shape}."
+            f"Expected delta_raw.shape[1] == {self.in_channels * self.kernel_size[0] * self.kernel_size[1] + self.use_bias}, "
+            f"but got {self.delta_raw.shape[1]} (full shape: {self.delta_raw.shape})."
         )
         assert (
-            self.delta_raw.shape[1] == self.out_channels
-        ), f"The delta should have shape ({self.out_channels}, ...) but got {self.delta_raw.shape}."
+            self.delta_raw.shape[0] == self.out_channels
+        ), f"Expected delta_raw.shape[0] == {self.out_channels}, but got {self.delta_raw.shape[0]}."
         return -self.tensor_m_prev() - torch.einsum(
-            "ab, bc -> ac", self.cross_covariance(), self.delta_raw
+            "ab, cb -> ac", self.cross_covariance(), self.delta_raw
         )
 
     def compute_optimal_added_parameters(
