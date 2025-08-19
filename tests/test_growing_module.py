@@ -8,6 +8,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase
 from tests.unittest_tools import unittest_parametrize
@@ -213,8 +214,6 @@ class TestGrowingModule(TorchTestCase):
 
     def test_edge_case_minimal_dimensions(self):
         """Test with minimal dimensions for edge case coverage."""
-        from gromo.modules.linear_growing_module import LinearGrowingModule
-
         # Create a linear growing module with minimal dimensions
         layer = LinearGrowingModule(1, 1, device=global_device(), name="tiny")
 
@@ -240,6 +239,161 @@ class TestGrowingModule(TorchTestCase):
         # Test reset
         layer.reset_computation()
         self.assertFalse(layer.store_input)
+
+    def test_tensor_s_growth_no_previous_module(self):
+        """Test tensor_s_growth raises ValueError when no previous module."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer.previous_module = None
+
+        with self.assertRaises(ValueError) as context:
+            _ = layer.tensor_s_growth
+        self.assertIn("No previous module", str(context.exception))
+        self.assertIn("Thus S growth is not defined", str(context.exception))
+
+    def test_tensor_s_growth_with_growing_module_previous(self):
+        """Test tensor_s_growth redirects to previous_module.tensor_s for GrowingModule."""
+        # Create a chain: prev_layer -> layer
+        prev_layer = LinearGrowingModule(3, 2, device=global_device(), name="prev")
+        layer = LinearGrowingModule(2, 4, device=global_device(), name="layer")
+        layer.previous_module = prev_layer
+
+        # Initialize computation on previous layer to have tensor_s
+        prev_layer.init_computation()
+        x = torch.randn(5, 3, device=global_device())
+        output = prev_layer(x)
+
+        # Create a loss and backward pass to generate gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        prev_layer.update_computation()
+
+        # Test that tensor_s_growth redirects to previous_module.tensor_s
+        tensor_s_growth = layer.tensor_s_growth
+        self.assertIs(tensor_s_growth, prev_layer.tensor_s)
+
+        # Verify it's the same TensorStatistic object
+        self.assertIsInstance(tensor_s_growth, TensorStatistic)
+
+    def test_tensor_s_growth_with_merge_growing_module_previous(self):
+        """Test tensor_s_growth raises NotImplementedError for MergeGrowingModule previous."""
+        merge_layer = LinearMergeGrowingModule(
+            in_features=3, device=global_device(), name="merge"
+        )
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer.previous_module = merge_layer
+
+        with self.assertRaises(NotImplementedError) as context:
+            _ = layer.tensor_s_growth
+        self.assertIn(
+            "S growth is not implemented for module preceded by an MergeGrowingModule",
+            str(context.exception),
+        )
+
+    def test_tensor_s_growth_with_unsupported_previous_module(self):
+        """Test tensor_s_growth raises NotImplementedError for unsupported previous module types."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+        layer.previous_module = torch.nn.Linear(2, 3)  # Regular Linear layer
+
+        with self.assertRaises(NotImplementedError) as context:
+            _ = layer.tensor_s_growth
+        self.assertIn("S growth is not implemented yet", str(context.exception))
+
+    def test_tensor_s_growth_setter_raises_error(self):
+        """Test that setting tensor_s_growth raises AttributeError."""
+        layer = LinearGrowingModule(3, 2, device=global_device(), name="layer")
+
+        with self.assertRaises(AttributeError) as context:
+            layer.tensor_s_growth = "some_value"
+        self.assertIn("You tried to set tensor_s_growth", str(context.exception))
+        self.assertIn("This is not allowed", str(context.exception))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_tensor_s_growth_functional_behavior(self, bias):
+        """Test tensor_s_growth functional behavior with different bias settings."""
+        # Create a complete chain to test functional behavior
+        layer1 = LinearGrowingModule(
+            3, 2, use_bias=bias, device=global_device(), name="layer1"
+        )
+        layer2 = LinearGrowingModule(
+            2, 4, use_bias=bias, device=global_device(), name="layer2"
+        )
+        layer1.next_module = layer2
+        layer2.previous_module = layer1
+
+        # Initialize computations
+        layer1.init_computation()
+        layer2.init_computation()
+
+        # Forward pass
+        x = torch.randn(5, 3, device=global_device())
+        out1 = layer1(x)
+        out2 = layer2(out1)
+
+        # Backward pass
+        loss = torch.norm(out2)
+        loss.backward()
+
+        # Update computations
+        layer1.update_computation()
+        layer2.update_computation()
+
+        # Test tensor_s_growth access
+        tensor_s_growth = layer2.tensor_s_growth
+        self.assertIs(tensor_s_growth, layer1.tensor_s)
+
+        # Test that tensor_s_growth returns the correct tensor
+        growth_tensor = tensor_s_growth()
+        expected_size = layer1.in_features + (1 if layer1.use_bias else 0)
+        self.assertEqual(growth_tensor.shape, (expected_size, expected_size))
+
+    def test_tensor_s_growth_multiple_layer_chain(self):
+        """Test tensor_s_growth in a longer chain of modules."""
+        # Create chain: layer1 -> layer2 -> layer3
+        layer1 = LinearGrowingModule(3, 2, device=global_device(), name="layer1")
+        layer2 = LinearGrowingModule(2, 3, device=global_device(), name="layer2")
+        layer3 = LinearGrowingModule(3, 1, device=global_device(), name="layer3")
+
+        layer1.next_module = layer2
+        layer2.previous_module = layer1
+        layer2.next_module = layer3
+        layer3.previous_module = layer2
+
+        # Initialize computations
+        layer1.init_computation()
+        layer2.init_computation()
+        layer3.init_computation()
+
+        # Forward pass through the chain
+        x = torch.randn(4, 3, device=global_device())
+        out1 = layer1(x)
+        out2 = layer2(out1)
+        out3 = layer3(out2)
+
+        # Backward pass
+        loss = torch.norm(out3)
+        loss.backward()
+
+        # Update computations
+        layer1.update_computation()
+        layer2.update_computation()
+        layer3.update_computation()
+
+        # Test tensor_s_growth for each layer
+        # layer2.tensor_s_growth should point to layer1.tensor_s
+        self.assertIs(layer2.tensor_s_growth, layer1.tensor_s)
+
+        # layer3.tensor_s_growth should point to layer2.tensor_s
+        self.assertIs(layer3.tensor_s_growth, layer2.tensor_s)
+
+        # Verify the shapes are correct
+        growth_tensor_2 = layer2.tensor_s_growth()
+        expected_size_2 = layer1.in_features + (1 if layer1.use_bias else 0)
+        self.assertEqual(growth_tensor_2.shape, (expected_size_2, expected_size_2))
+
+        growth_tensor_3 = layer3.tensor_s_growth()
+        expected_size_3 = layer2.in_features + (1 if layer2.use_bias else 0)
+        self.assertEqual(growth_tensor_3.shape, (expected_size_3, expected_size_3))
 
 
 class TestMergeGrowingModule(TorchTestCase):
