@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add `use_projected_gradient` parameter to growing modules to control whether to use projected gradient (`tensor_n`) or raw tensor (`tensor_m_prev`) for computing new neurons. This provides more flexibility in the optimization strategy and improves test coverage for critical code paths (:gh:`104` by `Théo Rudkiewicz`_).
 - Fix statistics normalization in `LinearGrowingModule` (:gh:`110` by `Stéphane Rivaud`_)
 - Implement systematic test coverage improvement initiative achieving 92% → 95% overall coverage through 4-phase strategic enhancement targeting critical modules: utils.py (80% → 96%), tools.py (78% → 98%), and growing_module.py (92% → 94%). Added 27 comprehensive test methods covering multi-device compatibility, error handling paths, mathematical algorithm edge cases, and abstract class testing via concrete implementations (:gh:`113` by `Stéphane Rivaud`_).
 - Fix the `tensor_n` computation in `RestrictedConv2dGrowingModule` (:gh:`103` by `Théo Rudkiewicz`_).
