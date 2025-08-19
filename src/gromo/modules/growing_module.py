@@ -1271,6 +1271,7 @@ class GrowingModule(torch.nn.Module):
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
@@ -1285,13 +1286,18 @@ class GrowingModule(torch.nn.Module):
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
             dtype for S and N during the computation
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
             optimal added weights alpha, omega and eigenvalues lambda
         """
-        matrix_n = self.tensor_n
+        if use_projected_gradient:
+            matrix_n = self.tensor_n
+        else:
+            matrix_n = self.tensor_m_prev()
         # It seems that sometimes the tensor N is not accessible.
         # I have no idea why this occurs sometimes.
 
@@ -1327,6 +1333,7 @@ class GrowingModule(torch.nn.Module):
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1344,6 +1351,8 @@ class GrowingModule(torch.nn.Module):
             whether to change the previous layer extended_output_layer
         dtype: torch.dtype
             dtype for S and N during the computation
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
@@ -1380,8 +1389,8 @@ class GrowingModule(torch.nn.Module):
         statistical_threshold: float = 1e-5,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
-        zero_delta: bool = False,
         dtype: torch.dtype = torch.float32,
+        use_projected_gradient: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Compute the optimal update  and additional neurons.
@@ -1396,10 +1405,10 @@ class GrowingModule(torch.nn.Module):
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
             whether to change the previous layer extended_output_layer
-        zero_delta: bool
-            if True, compute the optimal added neurons without performing the natural gradient step.
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
+        use_projected_gradient: bool
+            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
 
         Returns
         -------
@@ -1407,12 +1416,6 @@ class GrowingModule(torch.nn.Module):
             optimal extension for the previous layer (weights and biases)
         """
         self.compute_optimal_delta(dtype=dtype)
-        if zero_delta:
-            if self.optimal_delta_layer is not None:
-                self.optimal_delta_layer.weight.data.zero_()
-                if self.optimal_delta_layer.bias is not None:
-                    self.optimal_delta_layer.bias.data.zero_()
-            self.delta_raw.zero_()
 
         if self.previous_module is None:
             return  # FIXME: change the definition of the function
@@ -1423,6 +1426,7 @@ class GrowingModule(torch.nn.Module):
                 maximum_added_neurons=maximum_added_neurons,
                 update_previous=update_previous,
                 dtype=dtype,
+                use_projected_gradient=use_projected_gradient,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):

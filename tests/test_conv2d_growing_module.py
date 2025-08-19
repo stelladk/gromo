@@ -472,12 +472,15 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 s0 = demo_couple[0].in_channels * demo_couple[0].kernel_size[
                     0
                 ] * demo_couple[0].kernel_size[1] + (1 if bias else 0)
-                s1 = demo_couple[1].out_channels
-                s2 = demo_couple[1].kernel_size[0] * demo_couple[1].kernel_size[1]
+                s1 = (
+                    demo_couple[1].out_channels
+                    * demo_couple[1].kernel_size[0]
+                    * demo_couple[1].kernel_size[1]
+                )
 
                 self.assertShapeEqual(
                     demo_couple[1].tensor_m_prev(),
-                    (s0, s1, s2),
+                    (s0, s1),
                 )
 
     def test_cross_covariance_update(self):
@@ -580,8 +583,9 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
         m_prev_shape_theory = (
             s_shape_theory,
-            demo_couple[1].out_channels,
-            demo_couple[1].kernel_size[0] * demo_couple[1].kernel_size[1],
+            demo_couple[1].out_channels
+            * demo_couple[1].kernel_size[0]
+            * demo_couple[1].kernel_size[1],
         )
         self.assertShapeEqual(demo_couple[1].tensor_m_prev(), m_prev_shape_theory)
 
@@ -627,6 +631,55 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertEqual(demo_couple[0].extended_output_layer.out_channels, 3)
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_added_parameters_use_projected_gradient_false(
+        self, bias: bool
+    ):
+        """
+        Explicitly test the use_projected_gradient=False branch for coverage.
+        """
+        demo_couple = self.demo_couple[bias]
+        demo_couple[1].init_computation()
+
+        y = demo_couple[0](self.input_x)
+        y = demo_couple[1](y)
+        loss = torch.norm(y)
+        loss.backward()
+
+        demo_couple[1].update_computation()
+
+        # Call with use_projected_gradient=False
+        alpha, alpha_b, omega, eigenvalues = demo_couple[
+            1
+        ].compute_optimal_added_parameters(use_projected_gradient=False)
+
+        self.assertShapeEqual(
+            alpha,
+            (
+                -1,
+                demo_couple[0].in_channels,
+                demo_couple[0].kernel_size[0],
+                demo_couple[0].kernel_size[1],
+            ),
+        )
+        k = alpha.size(0)
+        if bias:
+            self.assertShapeEqual(alpha_b, (k,))
+        else:
+            self.assertIsNone(alpha_b)
+
+        self.assertShapeEqual(
+            omega,
+            (
+                demo_couple[1].out_channels,
+                k,
+                demo_couple[1].kernel_size[0],
+                demo_couple[1].kernel_size[1],
+            ),
+        )
+
+        self.assertShapeEqual(eigenvalues, (k,))
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_compute_optimal_added_parameters_empirical(self, bias: bool):
         demo_couple = self.demo_couple[bias]
         demo_couple_1 = FullConv2dGrowingModule(
@@ -664,7 +717,7 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         demo_couple[1].delta_raw *= 0
 
         self.assertAllClose(
-            -demo_couple[1].tensor_m_prev().flatten(start_dim=-2),
+            -demo_couple[1].tensor_m_prev(),
             demo_couple[1].tensor_n,
             message="The tensor_m_prev should be equal to the tensor_n when the delta is zero",
         )
@@ -852,6 +905,42 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         )
 
         alpha, alpha_b, omega, eigs = demo_out.compute_optimal_added_parameters()
+
+        self.assertIsInstance(alpha, torch.Tensor)
+        self.assertIsInstance(omega, torch.Tensor)
+        self.assertIsInstance(eigs, torch.Tensor)
+        if bias:
+            self.assertIsInstance(alpha_b, torch.Tensor)
+        else:
+            self.assertIsNone(alpha_b)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_compute_optimal_added_parameters_use_projected_gradient_false(
+        self, bias: bool
+    ):
+        """Test compute_optimal_added_parameters with use_projected_gradient=False for RestrictedConv2dGrowingModule."""
+        demo_in, demo_out = self.demo_couple[bias]
+
+        demo_out.init_computation()
+
+        x = demo_in(self.input_x)
+        y = demo_out(x)
+        loss = torch.nn.functional.mse_loss(y, torch.zeros_like(y))
+        loss.backward()
+
+        demo_out.update_computation()
+
+        demo_out.delta_raw = torch.zeros(
+            demo_out.out_channels,
+            demo_out.in_channels * demo_out.kernel_size[0] * demo_out.kernel_size[1]
+            + bias,
+            device=global_device(),
+        )
+
+        # Test with use_projected_gradient=False
+        alpha, alpha_b, omega, eigs = demo_out.compute_optimal_added_parameters(
+            use_projected_gradient=False
+        )
 
         self.assertIsInstance(alpha, torch.Tensor)
         self.assertIsInstance(omega, torch.Tensor)

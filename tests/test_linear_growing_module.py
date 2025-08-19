@@ -962,9 +962,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             layer_out.compute_optimal_updates()
             self.verify_layer_invariants(layer_out, reference, invariants)
 
-        # Test update without natural gradient
-        layer_out.compute_optimal_updates(zero_delta=True)
-
     @unittest_parametrize(({"bias": True, "dtype": torch.float64}, {"bias": False}))
     def test_compute_optimal_added_parameters(
         self, bias: bool, dtype: torch.dtype = torch.float32
@@ -1013,6 +1010,32 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         self.assertEqual(demo_layers[1].eigenvalues_extension.shape[0], 2)
         self.assertEqual(demo_layers[1].extended_input_layer.in_features, 2)
         self.assertEqual(demo_layers[0].extended_output_layer.out_features, 2)
+
+    def test_compute_optimal_added_parameters_use_projected_gradient_false(self):
+        """Test compute_optimal_added_parameters with use_projected_gradient=False."""
+        # Use existing demo layers from setUp
+        demo_layers = self.demo_layers[False]  # Use without bias for simplicity
+        demo_layers[0].store_input = True
+        demo_layers[1].init_computation()
+
+        y = demo_layers[0](self.input_x)
+        y = demo_layers[1](y)
+        loss = torch.norm(y)
+        loss.backward()
+
+        demo_layers[1].update_computation()
+
+        # Call compute_optimal_added_parameters with use_projected_gradient=False
+        alpha, alpha_b, omega, eigenvalues = demo_layers[
+            1
+        ].compute_optimal_added_parameters(use_projected_gradient=False)
+
+        # Verify that we get valid outputs with expected shapes
+        self.assertShapeEqual(alpha, (-1, demo_layers[0].in_features))
+        k = alpha.size(0)
+        self.assertIsNone(alpha_b)  # No bias in this test
+        self.assertShapeEqual(omega, (demo_layers[1].out_features, k))
+        self.assertShapeEqual(eigenvalues, (k,))
 
     @unittest_parametrize(({"bias": True}, {"bias": False}))
     def test_tensor_s_growth(self, bias):
