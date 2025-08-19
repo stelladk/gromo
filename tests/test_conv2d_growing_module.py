@@ -627,7 +627,9 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
         self.assertEqual(demo_couple[0].extended_output_layer.out_channels, 3)
 
         @unittest_parametrize(({"bias": True}, {"bias": False}))
-        def test_compute_optimal_added_parameters_use_projected_gradient_false(self, bias: bool):
+        def test_compute_optimal_added_parameters_use_projected_gradient_false(
+            self, bias: bool
+        ):
             """
             Explicitly test the use_projected_gradient=False branch for coverage.
             """
@@ -646,7 +648,9 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
 
             # demo_couple[1].compute_optimal_delta()
             # Call with use_projected_gradient=False
-            alpha, alpha_b, omega, eigenvalues = demo_couple[1].compute_optimal_added_parameters(use_projected_gradient=False)
+            alpha, alpha_b, omega, eigenvalues = demo_couple[
+                1
+            ].compute_optimal_added_parameters(use_projected_gradient=False)
 
             self.assertShapeEqual(
                 alpha,

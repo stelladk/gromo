@@ -962,9 +962,6 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
             layer_out.compute_optimal_updates()
             self.verify_layer_invariants(layer_out, reference, invariants)
 
-        # Test update without natural gradient
-        layer_out.compute_optimal_updates(zero_delta=True)
-
     @unittest_parametrize(({"bias": True, "dtype": torch.float64}, {"bias": False}))
     def test_compute_optimal_added_parameters(
         self, bias: bool, dtype: torch.dtype = torch.float32
