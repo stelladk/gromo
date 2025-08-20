@@ -67,7 +67,7 @@ def compute_optimal_delta(
     Parameters
     ----------
     tensor_s: torch.Tensor, of shape [total_in_features, total_in_features]
-        S tensor from calling layer, shape 
+        S tensor from calling layer, shape
     tensor_m: torch.Tensor, of shape [total_in_features, in_features]
         M tensor from calling layer
     dtype: torch.dtype, default torch.float32
