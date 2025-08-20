@@ -66,7 +66,11 @@ def compute_optimal_delta(
 
     Parameters
     ----------
-    dtype: torch.dtype
+    tensor_s: torch.Tensor, of shape [total_in_features, total_in_features]
+        S tensor from calling layer, shape 
+    tensor_m: torch.Tensor, of shape [total_in_features, in_features]
+        M tensor from calling layer
+    dtype: torch.dtype, default torch.float32
         dtype for S and M during the computation
     force_pseudo_inverse: bool
         if True, use the pseudo-inverse to compute the optimal delta even if the
