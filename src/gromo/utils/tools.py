@@ -58,7 +58,7 @@ def optimal_delta(
     """
     Compute the optimal delta for the layer using current S and M tensors.
 
-    dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
+    dW* = S[-1]^-1 M (if needed we use the pseudo-inverse)
 
     Compute dW* (and dBias* if needed).
     L(A + gamma * B * dW) = L(A) - gamma * d + o(gamma)
