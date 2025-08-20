@@ -10,9 +10,9 @@ from gromo.utils.tools import (
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_optimal_added_parameters,
-    compute_optimal_delta,
     compute_output_shape_conv,
     create_bordering_effect_convolution,
+    optimal_delta,
     sqrt_inverse_matrix_semi_positive,
 )
 from tests.torch_unittest import TorchTestCase
@@ -567,7 +567,7 @@ class TestTools(TorchTestCase):
         tensor_m = torch.randn(3, 2)
 
         # Test computation with either normal or forced pseudo-inverse
-        delta, decrease = compute_optimal_delta(
+        delta, decrease = optimal_delta(
             tensor_s, tensor_m, force_pseudo_inverse=force_pseudo_inverse
         )
 
@@ -588,7 +588,7 @@ class TestTools(TorchTestCase):
         tensor_m = torch.randn(3, 2, dtype=torch.float64)
 
         # Test with specified dtype conversion
-        delta, decrease = compute_optimal_delta(tensor_s, tensor_m, dtype=torch.float32)
+        delta, decrease = optimal_delta(tensor_s, tensor_m, dtype=torch.float32)
 
         # Should preserve original dtype in output
         self.assertEqual(delta.dtype, torch.float64)  # Original tensor dtype
@@ -603,7 +603,7 @@ class TestTools(TorchTestCase):
 
         # Should raise AssertionError
         with self.assertRaises(AssertionError) as context:
-            compute_optimal_delta(tensor_s, tensor_m)
+            optimal_delta(tensor_s, tensor_m)
 
         # Verify the error message mentions dtype mismatch
         self.assertIn("same dtype", str(context.exception))
@@ -616,7 +616,7 @@ class TestTools(TorchTestCase):
         tensor_s = torch.eye(3, dtype=torch.float32) * 2.0
         tensor_m = torch.randn(3, 2, dtype=torch.float32)
 
-        delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
+        delta, decrease = optimal_delta(tensor_s, tensor_m)
 
         self.assertEqual(delta.dtype, torch.float32)
         if isinstance(decrease, torch.Tensor):
@@ -626,7 +626,7 @@ class TestTools(TorchTestCase):
         tensor_s = torch.eye(3, dtype=torch.float64) * 2.0
         tensor_m = torch.randn(3, 2, dtype=torch.float64)
 
-        delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
+        delta, decrease = optimal_delta(tensor_s, tensor_m)
 
         self.assertEqual(delta.dtype, torch.float64)
         if isinstance(decrease, torch.Tensor):
@@ -643,7 +643,7 @@ class TestTools(TorchTestCase):
             ),
             unittest.mock.patch("gromo.utils.tools.warn") as mock_warn,
         ):
-            delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
+            delta, decrease = optimal_delta(tensor_s, tensor_m)
 
             # Should have called warning about pseudo-inverse
             mock_warn.assert_called()
@@ -668,7 +668,7 @@ class TestTools(TorchTestCase):
         # Mock torch.trace to return a negative value
         with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
             with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
-                delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
+                delta, decrease = optimal_delta(tensor_s, tensor_m)
 
                 # The warning should be called
                 mock_warn.assert_called()
@@ -694,7 +694,7 @@ class TestTools(TorchTestCase):
         # Mock torch.trace to return negative value, triggering the retry mechanism
         with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
             with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
-                delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
+                delta, decrease = optimal_delta(tensor_s, tensor_m)
 
                 # Should warn about negative decrease and trying float64
                 warn_calls = [str(call) for call in mock_warn.call_args_list]
@@ -718,7 +718,7 @@ class TestTools(TorchTestCase):
 
         with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
             with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
-                delta, decrease = compute_optimal_delta(
+                delta, decrease = optimal_delta(
                     tensor_s, tensor_m, force_pseudo_inverse=True
                 )
 
@@ -741,7 +741,7 @@ class TestTools(TorchTestCase):
             "torch.linalg.solve", return_value=torch.full(tensor_m.shape, float("nan"))
         ):
             with self.assertRaises(AssertionError) as context:
-                compute_optimal_delta(tensor_s, tensor_m)
+                optimal_delta(tensor_s, tensor_m)
             self.assertIn("NaN values", str(context.exception))
 
     def test_compute_optimal_delta_matrix_dimensions(self):
@@ -759,7 +759,7 @@ class TestTools(TorchTestCase):
                 tensor_s = tensor_s @ tensor_s.T  # Ensure positive definite
                 tensor_m = torch.randn(s_dim, m_cols)
 
-                delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
+                delta, decrease = optimal_delta(tensor_s, tensor_m)
 
                 self.assertEqual(delta.shape, (m_cols, s_dim))
                 self.assertFalse(torch.isnan(delta).any())

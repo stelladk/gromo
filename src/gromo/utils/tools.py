@@ -49,7 +49,7 @@ def sqrt_inverse_matrix_semi_positive(
     return eigenvectors @ torch.diag(eigenvalues) @ eigenvectors.t()
 
 
-def compute_optimal_delta(
+def optimal_delta(
     tensor_s: torch.Tensor,
     tensor_m: torch.Tensor,
     dtype: torch.dtype = torch.float32,
@@ -116,7 +116,7 @@ def compute_optimal_delta(
         )
         if not force_pseudo_inverse:
             warn(f"Trying to use the pseudo-inverse with torch.float64.")
-            return compute_optimal_delta(
+            return optimal_delta(
                 tensor_s, tensor_m, dtype=torch.float64, force_pseudo_inverse=True
             )
         else:

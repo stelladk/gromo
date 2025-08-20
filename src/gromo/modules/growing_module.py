@@ -6,7 +6,7 @@ import torch
 
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
-from gromo.utils.tools import compute_optimal_added_parameters, compute_optimal_delta
+from gromo.utils.tools import compute_optimal_added_parameters, optimal_delta
 from gromo.utils.utils import get_correct_device
 
 
@@ -338,7 +338,7 @@ class MergeGrowingModule(torch.nn.Module):
             f"The tensor M should have shape ({self.total_in_features}, {self.in_features}). "
             f"Got {previous_tensor_m.shape}."
         )
-        delta, _ = compute_optimal_delta(
+        delta, _ = optimal_delta(
             previous_tensor_s,
             previous_tensor_m,
             dtype=dtype,
@@ -1286,7 +1286,7 @@ class GrowingModule(torch.nn.Module):
         tensor_s = self.tensor_s()
         tensor_m = self.tensor_m()
 
-        self.delta_raw, self.parameter_update_decrease = compute_optimal_delta(
+        self.delta_raw, self.parameter_update_decrease = optimal_delta(
             tensor_s, tensor_m, dtype=dtype, force_pseudo_inverse=force_pseudo_inverse
         )
 
