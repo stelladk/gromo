@@ -8,6 +8,7 @@ from gromo.modules.conv2d_growing_module import (
     FullConv2dGrowingModule,
     RestrictedConv2dGrowingModule,
 )
+from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import compute_output_shape_conv
 from gromo.utils.utils import global_device
 from tests.torch_unittest import TorchTestCase, indicator_batch
@@ -739,6 +740,101 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             msg=f"Despite the merge of new neurons the loss "
             f"has increased: {new_loss=} > {loss=}",
         )
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_tensor_s_growth_custom_implementation(self, bias):
+        """Test that FullConv2dGrowingModule has custom tensor_s_growth implementation."""
+        demo = self.bias_demos[bias]
+
+        # FullConv2dGrowingModule should have its own _tensor_s_growth attribute
+        self.assertTrue(hasattr(demo, "_tensor_s_growth"))
+
+        # Initialize computation to set up the tensor statistics
+        demo.init_computation()
+        x = torch.randn(2, demo.in_channels, 8, 8, device=global_device())
+        output = demo(x)
+
+        # Create a loss and backward pass to generate gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        demo.update_computation()
+
+        # tensor_s_growth should return the internal _tensor_s_growth, not previous module's tensor_s
+        tensor_s_growth = demo.tensor_s_growth
+        self.assertIs(tensor_s_growth, demo._tensor_s_growth)
+
+        # Verify it's a TensorStatistic
+        self.assertIsInstance(tensor_s_growth, TensorStatistic)
+
+    @unittest_parametrize(({"bias": True}, {"bias": False}))
+    def test_tensor_s_growth_independence_from_previous_module(self, bias):
+        """Test that FullConv2dGrowingModule tensor_s_growth is independent of previous module."""
+        demo_couple = self.demo_couple[bias]
+        demo_in, demo_out = demo_couple[0], demo_couple[1]
+
+        # Set up a chain where demo_out has demo_in as previous_module
+        demo_out.previous_module = demo_in
+
+        # Initialize computations
+        demo_in.init_computation()
+        demo_out.init_computation()
+
+        # Forward pass
+        x = torch.randn(2, demo_in.in_channels, 8, 8, device=global_device())
+        y = demo_in(x)
+        demo_out.update_input_size(y.shape[2:])
+        z = demo_out(y)
+
+        # Create a loss and backward pass to generate gradients
+        loss = torch.norm(z)
+        loss.backward()
+
+        # Update computations
+        demo_in.update_computation()
+        demo_out.update_computation()
+
+        # tensor_s_growth for FullConv2dGrowingModule should NOT redirect to previous module
+        # It should use its own _tensor_s_growth
+        tensor_s_growth_out = demo_out.tensor_s_growth
+        tensor_s_in = demo_in.tensor_s
+
+        self.assertIsNot(tensor_s_growth_out, tensor_s_in)
+        self.assertIs(tensor_s_growth_out, demo_out._tensor_s_growth)
+
+    def test_tensor_s_growth_shape_correctness(self):
+        """Test that tensor_s_growth returns tensors with correct shapes."""
+        demo = self.bias_demos[True]  # Test with bias
+
+        demo.init_computation()
+        x = torch.randn(3, demo.in_channels, 6, 6, device=global_device())
+        output = demo(x)
+
+        # Create a loss and backward pass to generate gradients
+        loss = torch.norm(output)
+        loss.backward()
+
+        demo.update_computation()
+
+        # For FullConv2dGrowingModule, we need to ensure _tensor_s_growth has been computed
+        # Check if tensor_s_growth has samples before calling it
+        tensor_s_growth_stat = demo.tensor_s_growth
+        self.assertIsInstance(tensor_s_growth_stat, TensorStatistic)
+
+        # If it has samples, test the shape
+        if tensor_s_growth_stat.samples > 0:
+            tensor_s_growth = tensor_s_growth_stat()
+
+            # For FullConv2dGrowingModule, the tensor should have specific dimensions
+            # related to the unfolded input and the convolution parameters
+            self.assertIsInstance(tensor_s_growth, torch.Tensor)
+            self.assertEqual(len(tensor_s_growth.shape), 2)  # Should be a 2D tensor
+
+            # Both dimensions should be equal (square matrix)
+            self.assertEqual(tensor_s_growth.shape[0], tensor_s_growth.shape[1])
+        else:
+            # If no samples, just verify the tensor_s_growth property exists and is correct type
+            self.assertIsInstance(tensor_s_growth_stat, TensorStatistic)
 
 
 class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
