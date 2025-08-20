@@ -72,7 +72,7 @@ def compute_optimal_delta(
         M tensor from calling layer
     dtype: torch.dtype, default torch.float32
         dtype for S and M during the computation
-    force_pseudo_inverse: bool
+    force_pseudo_inverse: bool, default False
         if True, use the pseudo-inverse to compute the optimal delta even if the
         matrix is invertible
 
