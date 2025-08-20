@@ -116,7 +116,7 @@ def compute_optimal_delta(
                 tensor_s, tensor_m, dtype=torch.float64, force_pseudo_inverse=True
             )
         else:
-            warn(f"Failed to compute the optimal delta, set" f"delta to zero.")
+            warn("Failed to compute the optimal delta, set delta to zero.")
             delta_raw.fill_(0)
             parameter_update_decrease.fill_(0)
     delta_raw = delta_raw.to(dtype=saved_dtype)
