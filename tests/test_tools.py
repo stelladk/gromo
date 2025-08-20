@@ -754,7 +754,7 @@ class TestTools(TorchTestCase):
 
         # Test NaN assertion
         with unittest.mock.patch(
-            "torch.linalg.solve", return_value=torch.full((3, 2), float("nan"))
+            "torch.linalg.solve", return_value=torch.full(tensor_m.shape, float("nan"))
         ):
             with self.assertRaises(AssertionError) as context:
                 compute_optimal_delta(tensor_s, tensor_m)
