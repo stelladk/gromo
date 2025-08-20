@@ -666,24 +666,6 @@ class TestTools(TorchTestCase):
         tensor_m = torch.ones(2, 2, dtype=torch.float32)
 
         # Mock torch.trace to return a negative value
-        with (
-            unittest.mock.patch("gromo.utils.tools.warn") as mock_warn,
-            unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)),
-        ):
-            delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
-
-            # The warning should be called
-            mock_warn.assert_called()
-
-            # Check that the specific warning about negative decrease was called
-            warning_calls = [
-                call
-                for call in mock_warn.call_args_list
-                if len(call[0]) > 0
-                and "parameter update decrease should be positive" in call[0][0]
-            ]
-            self.assertTrue(len(warning_calls) > 0, "Should warn about negative decrease")
-            warn_calls = [str(call) for call in mock_warn.call_args_list]
         with unittest.mock.patch("gromo.utils.tools.warn") as mock_warn:
             with unittest.mock.patch("torch.trace", return_value=torch.tensor(-1.0)):
                 delta, decrease = compute_optimal_delta(tensor_s, tensor_m)
