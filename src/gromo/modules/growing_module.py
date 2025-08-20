@@ -300,6 +300,7 @@ class MergeGrowingModule(torch.nn.Module):
         update: bool = True,
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
+        dtype: torch.dtype = torch.float32,
     ) -> list[tuple[torch.Tensor, torch.Tensor]] | None:
         """
         Compute the optimal delta for each previous layer using current S and M tensors.
@@ -314,6 +315,8 @@ class MergeGrowingModule(torch.nn.Module):
         force_pseudo_inverse: bool
             if True, use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible
+        dtype: torch.dtype
+            dtype for S and M during the computation
         Returns
         -------
         list[tuple[torch.Tensor, torch.Tensor]] | None
@@ -338,6 +341,7 @@ class MergeGrowingModule(torch.nn.Module):
         delta, _ = compute_optimal_delta(
             previous_tensor_s,
             previous_tensor_m,
+            dtype=dtype,
             force_pseudo_inverse=force_pseudo_inverse,
         )
 
