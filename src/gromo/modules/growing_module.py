@@ -308,11 +308,11 @@ class MergeGrowingModule(torch.nn.Module):
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
         Parameters
         ----------
-        update: bool
+        update: bool, default True
             if True update the optimal delta layer attribute
-        return_deltas: bool
+        return_deltas: bool, default False
             if True return the deltas
-        force_pseudo_inverse: bool
+        force_pseudo_inverse: bool, default False
             if True, use the pseudo-inverse to compute the optimal delta even if the
             matrix is invertible
         dtype: torch.dtype
