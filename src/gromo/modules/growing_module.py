@@ -887,7 +887,7 @@ class GrowingModule(torch.nn.Module):
         """
         raise AttributeError(
             f"You tried to set tensor_s_growth of a GrowingModule (name={self.name})."
-            "This is not allowed as s growth is the same as tensor_s."
+            "This is not allowed because tensor_s_growth refers to the previous module's tensor_s, not the current module's tensor_s."
         )
 
     def compute_m_update(
