@@ -698,7 +698,9 @@ class TestTools(TorchTestCase):
                     if len(call[0]) > 0
                     and "parameter update decrease should be positive" in call[0][0]
                 ]
-                self.assertTrue(len(warning_calls) > 0, "Should warn about negative decrease")
+                self.assertTrue(
+                    len(warning_calls) > 0, "Should warn about negative decrease"
+                )
                 warn_calls = [str(call) for call in mock_warn.call_args_list]
                 self.assertTrue(any("should be positive" in call for call in warn_calls))
 
