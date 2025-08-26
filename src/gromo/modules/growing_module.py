@@ -1207,6 +1207,7 @@ class GrowingModule(torch.nn.Module):
         apply_previous: bool = True,
         apply_delta: bool = True,
         apply_extension: bool = True,
+        extension_size: int | None = None,
     ) -> None:
         """
         Apply the optimal delta and extend the layer with current
@@ -1227,6 +1228,9 @@ class GrowingModule(torch.nn.Module):
             if True apply the optimal delta to the layer, by default True
         apply_extension: bool
             if True apply the extension to the layer, by default True
+        extension_size: int | None
+            size of the extension to apply, by default None and get automatically
+            determined using `self.eigenvalues_extension.shape[0]`
         """
         # print(f"==================== Applying change to {self.name} ====================")
         if scaling_factor is not None:
@@ -1258,10 +1262,18 @@ class GrowingModule(torch.nn.Module):
                 )
 
             if apply_previous and self.previous_module is not None:
+                if extension_size is None:
+                    assert self.eigenvalues_extension is not None, (
+                        "We need to determine the size of the extension but"
+                        "it was not given as parameter nor could be automatically"
+                        "determined as self.eigenvalues_extension is None"
+                        f"(Error occurred in {self.name})"
+                    )
+                    extension_size = self.eigenvalues_extension.shape[0]
                 if isinstance(self.previous_module, GrowingModule):
                     self.previous_module._apply_output_changes(
                         scaling_factor=self.scaling_factor,
-                        extension_size=self.eigenvalues_extension.shape[0],
+                        extension_size=extension_size,
                     )
                 elif isinstance(self.previous_module, MergeGrowingModule):
                     raise NotImplementedError  # TODO
