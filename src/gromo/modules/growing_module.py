@@ -1200,6 +1200,10 @@ class GrowingModule(torch.nn.Module):
             for module in self.post_layer_function:
                 if hasattr(module, "grow"):
                     module.grow(extension_size)
+        elif hasattr(self.post_layer_function, "grow"):
+            self.post_layer_function.grow(extension_size)
+        else:
+            pass
 
     def apply_change(
         self,
