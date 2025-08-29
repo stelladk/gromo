@@ -537,14 +537,14 @@ class GrowingModule(torch.nn.Module):
             self.extended_post_layer_function = extended_post_layer_function.to(
                 self.device
             )
-        if isinstance(extended_post_layer_function, torch.nn.Sequential):
-            for module in extended_post_layer_function:
+        if isinstance(self.extended_post_layer_function, torch.nn.Sequential):
+            for module in self.extended_post_layer_function:
                 if hasattr(module, "num_features"):
                     warnings.warn(
                         f"Warning in {self.name}: The extended post layer "
                         f"function may get a variable input size."
                     )
-        elif hasattr(extended_post_layer_function, "num_features"):
+        elif hasattr(self.extended_post_layer_function, "num_features"):
             warnings.warn(
                 f"Warning in {self.name}: The extended post layer "
                 f"function may get a variable input size."
@@ -1208,8 +1208,6 @@ class GrowingModule(torch.nn.Module):
                     module.grow(extension_size)
         elif hasattr(self.post_layer_function, "grow"):
             self.post_layer_function.grow(extension_size)
-        else:
-            pass
 
     def apply_change(
         self,
