@@ -105,6 +105,22 @@ class TestGrowingModule(TorchTestCase):
         self.assertIsInstance(repr(self.model), str)
 
     def test_init(self):
+        with self.assertWarns(UserWarning):
+            GrowingModule(
+                self.layer,
+                extended_post_layer_function=SizedIdentity(2),
+                allow_growing=False,
+            )
+
+        with self.assertWarns(UserWarning):
+            GrowingModule(
+                self.layer,
+                extended_post_layer_function=torch.nn.Sequential(
+                    torch.nn.Identity(), SizedIdentity(2)
+                ),
+                allow_growing=False,
+            )
+
         with self.assertRaises(AssertionError):
             l1 = GrowingModule(
                 torch.nn.Linear(3, 5, bias=False, device=global_device()),
