@@ -544,6 +544,12 @@ class GrowingModule(torch.nn.Module):
                         f"Warning in {self.name}: The extended post layer "
                         f"function may get a variable input size."
                     )
+        elif hasattr(extended_post_layer_function, "num_features"):
+            warnings.warn(
+                f"Warning in {self.name}: The extended post layer "
+                f"function may get a variable input size."
+            )
+
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
             previous_module, (GrowingModule, MergeGrowingModule)
