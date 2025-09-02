@@ -532,7 +532,7 @@ class GrowingModule(torch.nn.Module):
         self.layer: torch.nn.Module = layer.to(self.device)
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
         if extended_post_layer_function is None:
-            self.extended_post_layer_function = post_layer_function
+            self.extended_post_layer_function = self.post_layer_function
         else:
             self.extended_post_layer_function = extended_post_layer_function.to(
                 self.device
