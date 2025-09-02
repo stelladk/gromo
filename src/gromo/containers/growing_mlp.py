@@ -14,7 +14,7 @@ class GrowingMLP(GrowingContainer):
 
     def __init__(
         self,
-        in_features: int | list | tuple,
+        in_features: int | list[int] | tuple[int],
         out_features: int,
         hidden_size: int,
         number_hidden_layers: int,
@@ -53,7 +53,7 @@ class GrowingMLP(GrowingContainer):
             self.num_features = self.in_features
         elif isinstance(self.in_features, (list, tuple)):
             if flatten:
-                self.num_features = torch.tensor(self.in_features).prod().int().item()
+                self.num_features = int(torch.tensor(self.in_features).prod().item())
             else:
                 self.num_features = self.in_features[-1]
         else:
