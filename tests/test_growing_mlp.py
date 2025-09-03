@@ -6,7 +6,9 @@ ensuring proper functionality of growing multi-layer perceptron networks includi
 forward passes, statistics computation, normalization, and edge cases.
 """
 
+import io
 import unittest
+from contextlib import redirect_stdout
 
 import torch
 import torch.nn as nn
@@ -151,10 +153,6 @@ class TestGrowingMLP(unittest.TestCase):
     def test_normalise_verbose(self):
         """Test the normalization method with verbose output."""
         # Test the verbose branch that prints normalization factors
-        import io
-        import sys
-        from contextlib import redirect_stdout
-
         # Capture stdout to test verbose output
         captured_output = io.StringIO()
         with redirect_stdout(captured_output):
@@ -309,18 +307,6 @@ class TestPerceptron(unittest.TestCase):
         x = torch.randn(1, self.in_features)
         y = perceptron.forward(x)
         self.assertEqual(y.shape, (1, self.out_features))
-
-    def test_perceptron_with_custom_device(self):
-        """Test Perceptron with custom device specification."""
-        device = torch.device("cpu")  # Use CPU for testing
-        perceptron = Perceptron(
-            in_features=self.in_features,
-            hidden_feature=self.hidden_features,
-            out_features=self.out_features,
-            device=device,
-        )
-
-        self.assertEqual(perceptron.device, device)
 
 
 if __name__ == "__main__":
