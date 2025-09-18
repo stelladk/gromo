@@ -376,14 +376,11 @@ class TestUtils(TorchTestCase):
 
                 # Test with zero input features (edge case)
                 zero_in_features = 0
-                zero_out_features = 3
-                zero_linear = nn.Linear(
-                    zero_in_features, zero_out_features, device=device
-                )
+                zero_linear = nn.Linear(zero_in_features, out_features, device=device)
                 zero_input = torch.empty(batch_size, zero_in_features, device=device)
 
                 zero_output = safe_forward(zero_linear, zero_input)
-                self.assertShapeEqual(zero_output, (batch_size, zero_out_features))
+                self.assertShapeEqual(zero_output, (batch_size, out_features))
                 # Should return zeros with requires_grad=True
                 self.assertTrue(torch.all(zero_output == 0))
                 self.assertTrue(zero_output.requires_grad)
