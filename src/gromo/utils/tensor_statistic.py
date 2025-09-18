@@ -77,18 +77,19 @@ class TensorStatistic:
             not self._shape or self._tensor is not None
         ), f"The tensor statistic {self.name} has not been initialized."
         if self.updated is False:
-            update, nb_sample = self._update_function(**kwargs)
-            if self._tensor is not None:
-                assert update.size() == self._tensor.size(), (
-                    f"The update tensor has a different size than the tensor statistic {self.name}"
-                    f" {update.size()=}, {self._tensor.size()=}"
-                )
-                self._tensor += update
-            else:
-                assert (
-                    self._shape is None
-                ), "If self._shape is not None, self_.tensor should be initialised in init"
-                self._tensor = update
+            with torch.no_grad():
+                update, nb_sample = self._update_function(**kwargs)
+                if self._tensor is not None:
+                    assert update.size() == self._tensor.size(), (
+                        f"The update tensor has a different size than the tensor statistic {self.name}"
+                        f" {update.size()=}, {self._tensor.size()=}"
+                    )
+                    self._tensor += update
+                else:
+                    assert (
+                        self._shape is None
+                    ), "If self._shape is not None, self_.tensor should be initialised in init"
+                    self._tensor = update
             self.samples += nb_sample
             self.updated = True
 
