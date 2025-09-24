@@ -49,6 +49,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 padding=1,
                 use_bias=bias,
                 device=global_device(),
+                name="first_layer",
             )
             demo_out = self._tested_class(
                 in_channels=5,
@@ -57,6 +58,7 @@ class TestConv2dGrowingModule(TorchTestCase):
                 use_bias=bias,
                 previous_module=demo_in,
                 device=global_device(),
+                name="second_layer",
             )
             self.demo_couple[bias] = (demo_in, demo_out)
 
@@ -442,7 +444,6 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
             False
         ]  # Use without bias for simplicity
 
-        net = torch.nn.Sequential(demo_layer_1, demo_layer_2)
         demo_layer_2.store_pre_activity = True
         demo_layer_1.store_input = True
         demo_layer_2.tensor_m_prev.init()
@@ -536,7 +537,6 @@ class TestFullConv2dGrowingModule(TestConv2dGrowingModule):
                 loss = torch.norm(y)
                 loss.backward()
 
-                demo_couple[0].update_input_size()
                 demo_couple[1].update_input_size(compute_from_previous=True)
                 demo_couple[1].tensor_m_prev.update()
 
@@ -1034,7 +1034,6 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         loss = torch.nn.functional.mse_loss(y, torch.zeros_like(y))
         loss.backward()
 
-        demo_in.update_input_size()
         demo_out.tensor_m_prev.update()
 
         s0 = demo_in.in_channels * demo_in.kernel_size[0] * demo_in.kernel_size[1] + (
@@ -1214,8 +1213,6 @@ class TestRestrictedConv2dGrowingModule(TestConv2dGrowingModule):
         output = current_module(intermediate)
 
         # Update input sizes
-        current_module.update_input_size(compute_from_previous=True)
-
         # Access bordered_unfolded_extended_prev_input - this should not crash
         bordered_tensor = current_module.bordered_unfolded_extended_prev_input
 
