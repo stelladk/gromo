@@ -32,7 +32,7 @@ jobs:
 
       - uses: pre-commit/action@v3.0.1
         env:
-          SKIP: ruff-check,ruff-format
+          SKIP: ruff-check  # ,ruff-format
 
       - name: Install dependencies
         run: |
