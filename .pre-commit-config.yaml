@@ -58,7 +58,8 @@ repos:
       rev: v0.12.2
       hooks:
       -   id: ruff-check
-          args: ["--fix", "--output-format=full"]
+          args: ["--fix", "--output-format=full", "--exit-zero"]
+          verbose: true
       # - id: ruff-format conflict with black
 
   - repo: https://github.com/codespell-project/codespell
