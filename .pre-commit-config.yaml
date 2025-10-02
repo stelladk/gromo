@@ -59,6 +59,8 @@ repos:
       hooks:
       -   id: ruff-check
           args: ["--fix", "--output-format=full", "--exit-zero"]
+          # --exit-zero to make ruff is non-blocking
+          # it will show warnings but not prevent commits
           verbose: true
       # - id: ruff-format conflict with black
 
