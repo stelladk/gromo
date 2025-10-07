@@ -1,4 +1,4 @@
-name: Ruff Type Check
+name: Ruff Linting
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
   cancel-in-progress: true
@@ -11,7 +11,7 @@ on:
 
 jobs:
   ruff-check:
-    name: Ruff Type Check
+    name: Ruff Linting
     runs-on: ubuntu-latest
     continue-on-error: true  # Makes this check non-blocking
     steps:
