@@ -2054,6 +2054,159 @@ class GrowingModule(torch.nn.Module):
                 scale_input=input_extension_scale,
             )
 
+    def create_layer_in_extension(self, extension_size: int) -> None:
+        """
+        Create the layer input extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        raise NotImplementedError
+
+    def create_layer_out_extension(self, extension_size: int) -> None:
+        """
+        Create the layer output extension of given size.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        """
+        raise NotImplementedError
+
+    @torch.no_grad()
+    def copy_uniform_initialization(
+        self, tensor: torch.Tensor, reference_tensor: torch.Tensor, fan_in: int
+    ) -> None:
+        """
+        Initialize tensor with uniform law aligned on reference
+
+        Initialize the tensor with a uniform law with bounds
+        -sqrt(std(W)), sqrt(std(W))
+        where std(W) is the empirical standard deviation of the reference_tensor
+        if the reference_tensor has a non-zero variance.
+        Otherwise, use bounds
+        -1 / sqrt(fan_in), 1 / sqrt(fan_in)
+        where fan_in is the number of input features of the
+        extension.
+
+        Parameters
+        ----------
+        tensor: torch.Tensor
+            tensor to initialize
+        reference_tensor: torch.Tensor
+            tensor to get the standard deviation from
+        fan_in: int
+            number of input features of the extension
+        """
+        # Get the standard deviation from the reference_tensor
+        if (
+            reference_tensor is not None
+            and (std_dev := reference_tensor.std().item()) > 0
+        ):
+            std_dev = std_dev
+        else:
+            # Fallback to Kaiming uniform initialization bounds
+            std_dev = 1.0 / (fan_in**0.5)
+
+        # Initialize with uniform distribution
+        # bound = std_dev**0.5
+        bound = 3.0**0.5 * std_dev
+        torch.nn.init.uniform_(tensor, -bound, bound)
+
+    @torch.no_grad()
+    def create_layer_extensions(
+        self,
+        extension_size: int,
+        output_extension_size: int | None = None,
+        input_extension_size: int | None = None,
+        output_extension_init: str = "copy_uniform",
+        input_extension_init: str = "copy_uniform",
+    ) -> None:
+        """
+        Create extension for layer input and output.
+
+        Create the layer input and output extensions of given sizes.
+        Allow to have different sizes for input and output extensions,
+        this is useful for example if you connect a convolutional layer
+        to a linear layer.
+
+        Parameters
+        ----------
+        extension_size: int
+            size of the extension to create
+        output_extension_size: int | None
+            size of the output extension to create, if None use extension_size
+        input_extension_size: int | None
+            size of the input extension to create, if None use extension_size
+        output_extension_init: str
+            Initialization method for the output extension. Must be one of the keys
+            in `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+        input_extension_init: str
+            Initialization method for the input extension. Must be one of the keys in
+            `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+        """
+        if output_extension_size is None:
+            output_extension_size = extension_size
+        if input_extension_size is None:
+            input_extension_size = extension_size
+        assert isinstance(self.previous_module, GrowingModule), (
+            f"The layer {self.name} has no previous module."
+            "Therefore, neuron addition is not possible."
+        )
+        self.previous_module.create_layer_out_extension(output_extension_size)
+        self.create_layer_in_extension(input_extension_size)
+
+        known_inits = {
+            "copy_uniform": self.copy_uniform_initialization,
+            "zeros": lambda tensor, _, __: torch.nn.init.zeros_(tensor),
+            # Future initializations can be added here
+        }
+
+        for init in (output_extension_init, input_extension_init):
+            if init not in known_inits:
+                raise ValueError(
+                    f"Unknown initialization method '{init}'. "
+                    f"Available methods are: {list(known_inits.keys())}."
+                )
+
+        # Initialize input extension
+        layer_to_init = self.extended_input_layer
+        assert isinstance(layer_to_init, torch.nn.Module), (
+            f"The layer {self.name} has no input extension."
+            "Therefore, it can't be initialized."
+        )
+        init = input_extension_init
+
+        known_inits[init](
+            layer_to_init.weight, self.weight, self.get_fan_in_from_layer(layer_to_init)
+        )
+        if layer_to_init.bias is not None:
+            known_inits[init](
+                layer_to_init.bias, self.bias, self.get_fan_in_from_layer(layer_to_init)
+            )
+
+        # Initialize output extension
+        layer_to_init = self.previous_module.extended_output_layer
+        assert isinstance(layer_to_init, torch.nn.Module), (
+            f"The previous layer {self.previous_module.name} has no output extension."
+            "Therefore, it can't be initialized."
+        )
+        init = output_extension_init
+        known_inits[init](
+            layer_to_init.weight,
+            self.previous_module.weight,
+            self.previous_module.get_fan_in_from_layer(layer_to_init),
+        )
+        if layer_to_init.bias is not None:
+            known_inits[init](
+                layer_to_init.bias,
+                self.previous_module.bias,
+                self.previous_module.get_fan_in_from_layer(layer_to_init),
+            )
+
 
 if __name__ == "__main__":
     help(GrowingModule)
