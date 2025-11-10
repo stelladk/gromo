@@ -861,8 +861,6 @@ class GrowingGraphNetwork(GrowingContainer):
                 expanding_node = self.chosen_action.expanding_node
             else:
                 expanding_node = self.chosen_action.adjacent_expanding_node
-            # Update size of expanded node
-            self.update_size()
             # Rename new node to standard name
             self.dag.rename_nodes({expanding_node: expanding_node.split("_")[0]})
 
