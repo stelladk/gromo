@@ -417,6 +417,8 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         self.total_in_features = self.sum_in_features(with_bias=True)
 
         if self.total_in_features > 0:
+            if self._input_volume is not None:
+                self._input_volume = None  # reset calculation of input volume
             if self.tensor_s is None or self.tensor_s._shape != (
                 self.in_channels * self.kernel_size[0] * self.kernel_size[1]
                 + self.use_bias,
