@@ -6,6 +6,16 @@ from gromo.utils.dependence_estimator import *
 from tests.torch_unittest import TorchTestCase
 
 
+def slow_gaussian_kernel(X, sigma_sq=None):
+    pairwise_sq_dists = torch.sum((X[:, None] - X) ** 2, axis=-1)  # (n,n)
+
+    if sigma_sq is None:
+        sigma_sq = torch.median(pairwise_sq_dists)
+
+    K = torch.exp(-pairwise_sq_dists / (2 * sigma_sq))
+    return K
+
+
 class TestDependenceEstimator(TorchTestCase):
     def setUp(self) -> None:
         self.X = torch.rand((10, 500))
