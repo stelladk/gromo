@@ -128,6 +128,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 return_deltas=return_deltas,
                 force_pseudo_inverse=force_pseudo_inverse,
             )
+            assert node_module.parameter_update_decrease is not None
 
     def delete_update(self):
         for node_module in self.get_all_node_modules():
