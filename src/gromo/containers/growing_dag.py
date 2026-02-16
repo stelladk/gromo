@@ -21,6 +21,7 @@ from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
 )
+from gromo.utils.tools import lecun_normal_
 from gromo.utils.utils import (
     activation_fn,
     compute_BIC,
@@ -235,6 +236,13 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         return DAG_parameters
 
     def export_dag_parameters(self) -> dict:
+        """Export detailed parameters of the dag in dictionary format
+
+        Returns
+        -------
+        dict
+            dictionary with parameters sizes and attributes
+        """
         kernel_size = (3, 3)
         node_attributes = {
             node: {
@@ -806,9 +814,11 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 raise NotImplementedError
 
             if zero_weights:
-                new_module.weight = nn.Parameter(torch.zeros_like(new_module.weight))
-                if new_module.use_bias:
-                    new_module.bias = nn.Parameter(torch.zeros_like(new_module.bias))
+                nn.init.zeros_(new_module.weight)
+            else:
+                lecun_normal_(new_module.weight)
+            if new_module.use_bias:
+                nn.init.zeros_(new_module.bias)
 
             self.__set_edge_module(
                 prev_node,
