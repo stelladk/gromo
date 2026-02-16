@@ -1,4 +1,3 @@
-import math
 import unittest
 
 import torch
@@ -867,7 +866,7 @@ class TestGrowingDAG(TorchTestCase):
         x_b = self.dag.get_edge_module(start, "1")(x)
         x_b = self.dag.get_node_module("1")(x_b)
         x_b = self.dag.get_edge_module("1", end)(x_b)
-        out = x_a.add(x_b) / math.sqrt(2)
+        out = x_a.add(x_b)
         out = self.dag.get_node_module(end)(out)
 
         actual_out = self.dag(x)
@@ -901,7 +900,7 @@ class TestGrowingDAG(TorchTestCase):
         x_b = self.dag.get_edge_module(start, "1").extended_forward(x)
         x_b = self.dag.get_node_module("1")(x_b)
         x_b = self.dag.get_edge_module("1", end).extended_forward(*x_b)
-        out = x_a.add(x_b[0]) / math.sqrt(2)
+        out = x_a.add(x_b[0])
         out = self.dag.get_node_module(end)(out)
 
         mask = {"nodes": self.dag.nodes, "edges": self.dag.edges}
@@ -924,7 +923,7 @@ class TestGrowingDAG(TorchTestCase):
         x_b = self.dag.get_edge_module("1", end).extended_forward(*x_b)[1]
         self.assertIsNotNone(x_a)
         self.assertIsNotNone(x_b)
-        out_ext = x_a.add(x_b) / math.sqrt(2)  # type: ignore
+        out_ext = x_a.add(x_b)  # type: ignore
         out_ext = self.dag.get_node_module(end)(out_ext)
         actual_out, actual_out_ext = self.dag.extended_forward(x, mask=mask)
         self.assertIsNotNone(actual_out_ext)
