@@ -1,5 +1,4 @@
 import copy
-import string
 import warnings
 from collections import deque
 from enum import Enum
@@ -23,6 +22,7 @@ from gromo.modules.linear_growing_module import (
 from gromo.utils.tools import lecun_normal_
 from gromo.utils.utils import (
     activation_fn,
+    alphabetic_index,
     compute_BIC,
     evaluate_extended_dataset,
     f1_micro,
@@ -1277,7 +1277,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         # All possible one-hop connections
         for i, attr in enumerate(one_hop_edges):
             previous_node = attr.get("previous_node")
-            new_node = f"{attr.get('new_node')}_{string.ascii_lowercase[i]}"
+            new_node = f"{attr.get('new_node')}_{alphabetic_index(i)}"
             next_node = attr.get("next_node")
             node_attributes = attr.get("node_attributes", {})
             edge_attributes = attr.get("edge_attributes", {})
