@@ -366,6 +366,7 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion: Expansion,
         bottlenecks: dict[str, torch.Tensor] | str,
         activities: dict[str, torch.Tensor] | str,
+        neuron_clipping: float = -np.inf,
         verbose: bool = True,
     ) -> list:
         """Increase block dimension by expanding node with more neurons
@@ -513,26 +514,50 @@ class GrowingGraphNetwork(GrowingContainer):
             dataset, batch_size=self.neuron_batch_size, shuffle=False
         )
 
+        layer_fn = func.linear if linear_alpha_layer else func.conv2d
+        op_args = {"padding": "same"} if not linear_alpha_layer else {}
+        bias_1d = bias.detach().sum(dim=1).view(-1)
+
         with torch.no_grad():
+            all_h = torch.empty(0)  # hidden activations after sigma(alpha), before omega
             new_block_output = torch.empty(0)
-            for x, _ in dataloader:
-                out = self.block_forward(
-                    layer_fn=func.linear if linear_alpha_layer else func.conv2d,
-                    alpha=alpha,
-                    omega=omega,
-                    bias=bias,
-                    x=x.to(self.device),
-                    sigma=node_module.post_merge_function,
-                    **(
-                        {
-                            "padding": "same",
-                        }
-                        if not linear_alpha_layer
-                        else {}
-                    ),
+            target = torch.empty(0)
+            for x, y in dataloader:
+                x = x.to(self.device)
+                h = node_module.post_merge_function(
+                    layer_fn(x, alpha, bias=bias_1d, **op_args)
                 )
+                out = layer_fn(h, omega, bias=None, **op_args)
+                all_h = torch.cat((all_h, h.cpu()))
                 new_block_output = torch.cat((new_block_output, out.cpu()))
+                target = torch.cat((target, y.cpu()))
         expansion.metrics["block_output"] = {}
+
+        # Compute per-neuron first-order improvement (FOI).
+        # FOI_k = -<target, contribution of neuron k to block output>
+        # Backpropagate target through omega to get a gradient in neuron-space (grad_h),
+        # then FOI_k = -(h * grad_h)[..., k].sum(spatial).mean(batch).
+        with torch.no_grad():
+            if linear_alpha_layer:
+                # omega: (out_features, neurons), target: (batch, out_features)
+                # grad_h[b, k] = sum_j target[b, j] * omega[j, k]
+                grad_h = torch.mm(target, omega.detach().cpu())  # (batch, neurons)
+                neuron_foi = -(all_h * grad_h).mean(dim=0)  # (neurons,)
+            else:
+                # omega: (out_channels, neurons, kh, kw), target: (batch, out_channels, H, W)
+                # conv_transpose2d is the adjoint of conv2d, giving grad in neuron-space
+                pad = tuple(k // 2 for k in omega.shape[2:])
+                grad_h = func.conv_transpose2d(
+                    target.to(self.device), omega.detach(), padding=pad
+                ).cpu()  # (batch, neurons, H, W)
+                neuron_foi = -(all_h * grad_h).sum(dim=(-2, -1)).mean(dim=0)  # (neurons,)
+
+        expansion.metrics["neuron_foi"] = neuron_foi
+        mask = neuron_foi >= neuron_clipping
+        active_neurons = int(sum(mask.int()))
+        alpha = alpha[mask, ...]
+        bias = bias[mask, ...]
+        omega = omega[:, mask, ...]
 
         # Record layer extensions of new block
         i, i_bias = 0, 0
@@ -545,7 +570,7 @@ class GrowingGraphNetwork(GrowingContainer):
             prev_edge_module._scaling_factor_next_module[0] = 1
 
             _weight = alpha[:, i : i + in_features, ...]
-            _weight = _weight.view((self.neurons, *prev_edge_module.weight.shape[1:]))
+            _weight = _weight.view((active_neurons, *prev_edge_module.weight.shape[1:]))
             if prev_edge_module.use_bias:
                 _bias = bias[:, i_bias]
                 i_bias += 1
@@ -564,12 +589,12 @@ class GrowingGraphNetwork(GrowingContainer):
             if isinstance(next_edge_module, LinearGrowingModule):
                 out_features = next_edge_module.out_features
                 next_edge_module.extended_input_layer = nn.Linear(
-                    self.neurons, out_features, bias=False
+                    active_neurons, out_features, bias=False
                 )
             elif isinstance(next_edge_module, Conv2dGrowingModule):
                 out_features = next_edge_module.out_channels
                 next_edge_module.extended_input_layer = nn.Conv2d(
-                    in_channels=self.neurons,
+                    in_channels=active_neurons,
                     out_channels=out_features,
                     bias=False,
                     kernel_size=next_edge_module.layer.kernel_size,
@@ -587,7 +612,7 @@ class GrowingGraphNetwork(GrowingContainer):
             _weight = _weight.view(
                 (
                     next_edge_module.weight.shape[0],
-                    self.neurons,
+                    active_neurons,
                     *next_edge_module.weight.shape[2:],
                 )
             )
@@ -782,6 +807,7 @@ class GrowingGraphNetwork(GrowingContainer):
         input_B: dict[str, torch.Tensor] | str,
         amplitude_factor: bool,
         evaluate: bool,
+        neuron_clipping: float = -np.inf,
         train_dataloader: DataLoader = None,
         dev_dataloader: DataLoader = None,
         val_dataloader: DataLoader = None,
@@ -862,6 +888,7 @@ class GrowingGraphNetwork(GrowingContainer):
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
+                    neuron_clipping=neuron_clipping,
                     verbose=verbose,
                 )
 
