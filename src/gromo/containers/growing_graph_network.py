@@ -540,6 +540,8 @@ class GrowingGraphNetwork(GrowingContainer):
             else:
                 # omega: (out_channels, neurons, kh, kw), target: (batch, out_channels, H, W)
                 # conv_transpose2d is the adjoint of conv2d, giving grad in neuron-space
+                if target.dim() == 2:
+                    target = target.unsqueeze(-1).unsqueeze(-1)
                 pad = tuple(k // 2 for k in omega.shape[2:])
                 grad_h = func.conv_transpose2d(
                     target.to(self.device), omega.detach(), padding=pad
