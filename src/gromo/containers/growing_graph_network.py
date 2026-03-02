@@ -381,6 +381,8 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their pre-activity tensors as values
+        neuron_clipping : float, optional
+            clip neurons based on first order improvement threshold, by default -inf
         verbose : bool, optional
             print info, by default True
 
@@ -832,6 +834,8 @@ class GrowingGraphNetwork(GrowingContainer):
             use amplitude factor on new neurons
         evaluate : bool
             evaluate expansion on the data
+        neuron_clipping : float, optional
+            clip neurons based on first order improvement threshold, by default -inf
         train_dataloader : DataLoader, optional
             train dataloader, used if evaluate=True
         dev_dataloader : DataLoader, optional
