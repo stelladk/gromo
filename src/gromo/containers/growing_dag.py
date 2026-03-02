@@ -1078,7 +1078,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
         if constant_module:
             # Remove constant module if needed
-            self.remove_direct_edge(self.root, self.end)
+            self.remove_edge(self.root, self.end)
 
         return bottleneck, input_B
 
@@ -1376,7 +1376,9 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 module_input = output[previous_node]
                 activity = module(module_input)
 
-                assert activity.shape[1] == self.nodes[node]["size"]
+                assert (
+                    activity.shape[1] == self.nodes[node]["size"]
+                ), f"{activity.shape[1]=} != {self.nodes[node]['size']=} for {node=}"
 
                 if node in output:
                     output[node] = output[node].add(activity)
