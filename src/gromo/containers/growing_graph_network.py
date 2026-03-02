@@ -557,6 +557,9 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion.metrics["neuron_foi"] = neuron_foi
         mask = neuron_foi >= neuron_clipping
         active_neurons = int(sum(mask.int()))
+        if active_neurons < 1:
+            expansion.metrics["skip"] = True
+            return []
         alpha = alpha[mask, ...]
         bias = bias[mask, ...]
         omega = omega[:, mask, ...]
@@ -893,6 +896,8 @@ class GrowingGraphNetwork(GrowingContainer):
                     neuron_clipping=neuron_clipping,
                     verbose=verbose,
                 )
+                if expansion.metrics.get("skip", False):
+                    continue
 
             # Find amplitude factor that minimizes the overall loss
             if amplitude_factor:
