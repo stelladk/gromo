@@ -244,7 +244,7 @@ class GrowingGraphNetwork(GrowingContainer):
         scalar_product = torch.einsum("b...,b...->b", activity, bottleneck)
         act_norm = torch.einsum("b...,b...->b", activity, activity)
         bott_norm = torch.einsum("b...,b...->b", bottleneck, bottleneck)
-        return scalar_product.mean() / torch.sqrt(
+        return -scalar_product.mean() / torch.sqrt(
             (act_norm.mean() + eps) * (bott_norm.mean() + eps)
         )
 
