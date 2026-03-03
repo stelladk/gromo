@@ -1,7 +1,3 @@
-"""
-Growing Batch Normalization module for extending batch normalization layers dynamically.
-"""
-
 from typing import Callable
 
 import torch
