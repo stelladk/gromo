@@ -240,7 +240,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         Returns
         -------
         dict
-            dictionary with parameters sizes and attributes
+            dictionary with nodes and edges parameters
         """
         kernel_size = (3, 3)
         node_attributes = {
