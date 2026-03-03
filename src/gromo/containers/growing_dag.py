@@ -216,24 +216,15 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 "type": self.layer_type,  # shows what follows
                 "size": self.in_features,
                 "shape": self.input_shape,
-<<<<<<< normalization
-                "kernel_size": (3, 3),
-                "use_layer_norm": False,
-=======
                 "kernel_size": self.kernel_size,
->>>>>>> main
+                "use_layer_norm": False,
             },
             self.end: {
                 "type": self.layer_type,
                 "size": self.out_features,
-<<<<<<< normalization
                 "shape": self.input_shape,
-                "kernel_size": (3, 3),
-                "use_layer_norm": self.use_layer_norm,
-=======
                 "kernel_size": self.kernel_size,
-                "use_batch_norm": self.use_batch_norm,
->>>>>>> main
+                "use_layer_norm": self.use_layer_norm,
             },
         }
         edge_attributes = {
