@@ -308,6 +308,16 @@ class TestGrowingDAG(TorchTestCase):
             (self.hidden_size,),
         )
 
+        self.dag_conv.add_edges_from(edges)
+        node_attributes[new_node]["type"] = "convolution"
+        node_attributes[new_node]["kernel_size"] = self.dag_conv.kernel_size
+        with self.assertRaises(KeyError):
+            # The shape of the input (h,w) should be specified in convolution with LayerNorm
+            self.dag_conv.update_nodes(nodes=[new_node], node_attributes=node_attributes)
+
+        node_attributes[new_node]["shape"] = (3, 3)
+        self.dag_conv.update_nodes(nodes=[new_node], node_attributes=node_attributes)
+
     def test_update_edges(self) -> None:
         start, end = self.dag.root, self.dag.end
         self.dag.add_edge(start, end)
