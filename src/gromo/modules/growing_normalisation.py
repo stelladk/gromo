@@ -299,7 +299,10 @@ class GrowingLayerNorm(nn.LayerNorm):
         if current_param is None:
             return
 
-        required_shape = tuple(current_param.shape[:-1]) + (additional_last_dim,)
+        required_shape = (
+            *tuple(current_param.shape[:-1]),
+            additional_last_dim,
+        )
 
         if new_values is None:
             new_values = default_value_fn(
@@ -329,6 +332,24 @@ class GrowingLayerNorm(nn.LayerNorm):
         new_biases: torch.Tensor | None = None,
         device: torch.device | None = None,
     ) -> None:
+        """Grow the LayerNorm by increasing the last dimension
+
+        Parameters
+        ----------
+        additional_last_dim : int
+            number of additional features to add to last dimension
+        new_weights : torch.Tensor | None, optional
+            custom weights for the new features, if None defaults to ones, by default None
+        new_biases : torch.Tensor | None, optional
+            custom bias for the new features, if None defaults to zeros, by default None
+        device : torch.device | None, optional
+            expected device, by default None
+
+        Raises
+        ------
+        ValueError
+            if the `additional_last_dim` is not positive
+        """
         if additional_last_dim <= 0:
             raise ValueError(
                 f"additional_last_dim must be positive, got {additional_last_dim}"
@@ -367,12 +388,23 @@ class GrowingLayerNorm(nn.LayerNorm):
                 )
 
     def get_growth_info(self) -> dict:
+        """
+        Get information about the growth of this layer.
+
+        Returns
+        -------
+        dict
+            Dictionary containing growth information
+        """
         return {
             "normalized_shape": tuple(self.normalized_shape),
             "name": self.name,
         }
 
     def extra_repr(self) -> str:
+        """
+        Extra representation string for the layer.
+        """
         return f"{super().extra_repr()}, name={self.name}"
 
 
@@ -463,6 +495,27 @@ class GrowingGroupNorm(nn.GroupNorm):
         device: torch.device | None = None,
         new_num_groups: int | None = None,
     ) -> None:
+        """Grow the GroupNorm by adding more channels
+
+        Parameters
+        ----------
+        additional_channels : int
+            number of additional channels
+        new_weights : torch.Tensor | None, optional
+            custom weights for the new channels, if None defaults to ones, by default None
+        new_biases : torch.Tensor | None, optional
+            custom bias for the new channels, if None defaults to zeros, by default None
+        device : torch.device | None, optional
+            expected device, by default None
+        new_num_groups : int | None, optional
+            updated number of groups, if None they are not updated, by default None
+
+        Raises
+        ------
+        ValueError
+            if `additional_channels` is not positive or the new total number of channels
+            is not divisible by the number of groups
+        """
         if additional_channels <= 0:
             raise ValueError(
                 f"additional_channels must be positive, got {additional_channels}"
@@ -503,6 +556,14 @@ class GrowingGroupNorm(nn.GroupNorm):
             )
 
     def get_growth_info(self) -> dict:
+        """
+        Get information about the growth of this layer.
+
+        Returns
+        -------
+        dict
+            Dictionary containing growth information
+        """
         return {
             "num_channels": self.num_channels,
             "num_groups": self.num_groups,
@@ -510,4 +571,7 @@ class GrowingGroupNorm(nn.GroupNorm):
         }
 
     def extra_repr(self) -> str:
+        """
+        Extra representation string for the layer.
+        """
         return f"{super().extra_repr()}, name={self.name}"
