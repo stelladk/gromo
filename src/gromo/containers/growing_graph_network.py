@@ -553,6 +553,7 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion.metrics["neuron_foi"] = neuron_foi
         mask = neuron_foi >= neuron_selection_threshold
         active_neurons = int(sum(mask.int()))
+        expansion.metrics["active_neurons"] = active_neurons
         if active_neurons < 1:
             expansion.metrics["skip"] = True
             return []
@@ -1086,8 +1087,9 @@ class GrowingGraphNetwork(GrowingContainer):
             edge_module._scaling_factor_next_module.data[0] = factor
             edge_module.apply_change(scaling_factor=factor, apply_previous=False)
             if edge_module.extended_output_layer is not None:
+                new_neurons = self.chosen_action.metrics["active_neurons"]
                 edge_module._apply_output_changes(
-                    scaling_factor=factor, extension_size=self.neurons
+                    scaling_factor=factor, extension_size=new_neurons
                 )
 
         if self.chosen_action.type != ExpansionType.NEW_EDGE:
