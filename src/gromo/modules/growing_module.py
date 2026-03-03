@@ -650,7 +650,7 @@ class MergeGrowingModule(torch.nn.Module):
 
     def __del__(self) -> None:
         # Delete previous GrowingModules
-        for prev_module in self.previous_modules:
+        for prev_module in list(self.previous_modules):
             if isinstance(prev_module, GrowingModule):
                 prev_module.__del__()
             elif isinstance(prev_module, MergeGrowingModule):
@@ -659,7 +659,7 @@ class MergeGrowingModule(torch.nn.Module):
                     prev_module.update_size()
         self.previous_modules = []
         # Delete next GrowingModules
-        for next_module in self.next_modules:
+        for next_module in list(self.next_modules):
             if isinstance(next_module, GrowingModule):
                 next_module.__del__()
             elif isinstance(next_module, MergeGrowingModule):
