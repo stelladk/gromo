@@ -920,6 +920,12 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         """
         if node in self.nodes:
             node_module = self.get_node_module(node)
+            for prev_edge in self.in_edges(node):
+                if str(prev_edge) in self._modules:
+                    del self._modules[str(prev_edge)]
+            for next_edge in self.out_edges(node):
+                if str(next_edge) in self._modules:
+                    del self._modules[str(next_edge)]
             node_module.__del__()
             super().remove_node(node)
             self._get_ancestors(self.root)
@@ -1904,6 +1910,32 @@ class Expansion:
                 zero_weights=True,
             )  # type: ignore
             self.dag.toggle_node_candidate(self.expanding_node, candidate=True)
+
+    def delete(self) -> None:
+        if self.type == ExpansionType.NEW_EDGE:
+            self.dag.remove_edge(self.previous_node, self.next_node)
+        elif self.type == ExpansionType.NEW_NODE:
+            self.dag.remove_node(self.expanding_node)
+
+        # Delete updates based on mask
+        for prev_node, next_node in self.dag.edges:
+            if prev_node == self.expanding_node:
+                delete_input = True
+                delete_output = False
+            elif next_node == self.expanding_node:
+                delete_input = False
+                delete_output = True
+            else:
+                delete_input = False
+                delete_output = False
+
+            edge_module = self.dag.get_edge_module(prev_node, next_node)
+            edge_module.delete_update(
+                include_previous=False,
+                delete_delta=False,
+                delete_input=delete_input,
+                delete_output=delete_output,
+            )
 
     def __update_growth_history(
         self,
