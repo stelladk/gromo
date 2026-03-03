@@ -366,7 +366,7 @@ class GrowingGraphNetwork(GrowingContainer):
         expansion: Expansion,
         bottlenecks: dict[str, torch.Tensor] | str,
         activities: dict[str, torch.Tensor] | str,
-        neuron_clipping: float = -np.inf,
+        neuron_selection_threshold: float = -np.inf,
         verbose: bool = True,
     ) -> list:
         """Increase block dimension by expanding node with more neurons
@@ -381,8 +381,8 @@ class GrowingGraphNetwork(GrowingContainer):
             dictionary with node names as keys and their calculated bottleneck tensors as values
         activities : dict[str, torch.Tensor] | str
             dictionary with node names as keys and their pre-activity tensors as values
-        neuron_clipping : float, optional
-            clip neurons based on first order improvement threshold, by default -inf
+        neuron_selection_threshold : float, optional
+            select neurons based on first order improvement threshold, by default -inf
         verbose : bool, optional
             print info, by default True
 
@@ -557,7 +557,7 @@ class GrowingGraphNetwork(GrowingContainer):
                 neuron_foi = -(all_h * grad_h).sum(dim=(-2, -1)).mean(dim=0)  # (neurons,)
 
         expansion.metrics["neuron_foi"] = neuron_foi
-        mask = neuron_foi >= neuron_clipping
+        mask = neuron_foi >= neuron_selection_threshold
         active_neurons = int(sum(mask.int()))
         if active_neurons < 1:
             expansion.metrics["skip"] = True
@@ -814,7 +814,7 @@ class GrowingGraphNetwork(GrowingContainer):
         input_B: dict[str, torch.Tensor] | str,
         amplitude_factor: bool,
         evaluate: bool,
-        neuron_clipping: float = -np.inf,
+        neuron_selection_threshold: float = -np.inf,
         train_dataloader: DataLoader = None,
         dev_dataloader: DataLoader = None,
         val_dataloader: DataLoader = None,
@@ -834,8 +834,8 @@ class GrowingGraphNetwork(GrowingContainer):
             use amplitude factor on new neurons
         evaluate : bool
             evaluate expansion on the data
-        neuron_clipping : float, optional
-            clip neurons based on first order improvement threshold, by default -inf
+        neuron_selection_threshold : float, optional
+            select neurons based on first order improvement threshold, by default -inf
         train_dataloader : DataLoader, optional
             train dataloader, used if evaluate=True
         dev_dataloader : DataLoader, optional
@@ -897,7 +897,7 @@ class GrowingGraphNetwork(GrowingContainer):
                     expansion=expansion,
                     bottlenecks=bottleneck,
                     activities=input_B,
-                    neuron_clipping=neuron_clipping,
+                    neuron_selection_threshold=neuron_selection_threshold,
                     verbose=verbose,
                 )
                 if expansion.metrics.get("skip", False):
