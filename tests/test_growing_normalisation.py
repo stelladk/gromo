@@ -679,6 +679,43 @@ class TestGrowingLayerNorm(unittest.TestCase):
         )
         self.assertIsNone(ln.weight)
 
+    def test_extend_parameter_as_buffer(self):
+        """Test as_parameter=False path stores result as a buffer (line 326)."""
+        ln = GrowingLayerNorm(normalized_shape=self.initial_features, device=self.device)
+        device = ln.weight.device
+        # Register a fresh buffer (not an nn.Parameter) so register_buffer succeeds.
+        ln.register_buffer(
+            "running_stat",
+            torch.zeros(self.initial_features, device=device),
+        )
+        ln._extend_parameter(
+            "running_stat", 8, None, torch.zeros, device, as_parameter=False
+        )
+        buffers = dict(ln.named_buffers())
+        self.assertIn("running_stat", buffers)
+        self.assertEqual(buffers["running_stat"].shape[-1], self.initial_features + 8)
+
+    def test_grow_device_inferred_from_weight(self):
+        """Test that device is inferred from self.weight when not passed (line 368)."""
+        # Construct on CPU explicitly and call grow() without the device kwarg.
+        ln = GrowingLayerNorm(
+            normalized_shape=self.initial_features, device=torch.device("cpu")
+        )
+        ln.grow(8)  # device=None → line 368 branch taken
+        self.assertEqual(ln.weight.device.type, "cpu")
+        self.assertEqual(ln.weight.shape[0], self.initial_features + 8)
+
+    def test_grow_custom_params_device_transfer(self):
+        """Test that custom params on a different device are moved automatically (line 317)."""
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA not available")
+        ln = GrowingLayerNorm(
+            normalized_shape=self.initial_features, device=torch.device("cuda")
+        )
+        cpu_weights = torch.ones(8)  # intentionally on CPU
+        ln.grow(8, new_weights=cpu_weights)
+        self.assertEqual(ln.weight.device.type, "cuda")
+
 
 class TestGrowingGroupNorm(unittest.TestCase):
     """Test cases for GrowingGroupNorm class."""
@@ -933,6 +970,50 @@ class TestGrowingGroupNorm(unittest.TestCase):
             "weight", 8, None, torch.ones, torch.device("cpu"), as_parameter=True
         )
         self.assertIsNone(gn.weight)
+
+    def test_extend_parameter_as_buffer(self):
+        """Test as_parameter=False path stores result as a buffer (line 488)."""
+        gn = GrowingGroupNorm(
+            num_groups=self.num_groups,
+            num_channels=self.initial_channels,
+            device=self.device,
+        )
+        device = gn.weight.device
+        # Register a fresh buffer (not an nn.Parameter) so register_buffer succeeds.
+        gn.register_buffer(
+            "running_stat",
+            torch.zeros(self.initial_channels, device=device),
+        )
+        gn._extend_parameter(
+            "running_stat", 8, None, torch.zeros, device, as_parameter=False
+        )
+        buffers = dict(gn.named_buffers())
+        self.assertIn("running_stat", buffers)
+        self.assertEqual(buffers["running_stat"].shape[0], self.initial_channels + 8)
+
+    def test_grow_device_inferred_from_weight(self):
+        """Test that device is inferred from self.weight when not passed (line 537)."""
+        gn = GrowingGroupNorm(
+            num_groups=self.num_groups,
+            num_channels=self.initial_channels,
+            device=torch.device("cpu"),
+        )
+        gn.grow(8)  # device=None → line 537 branch taken
+        self.assertEqual(gn.weight.device.type, "cpu")
+        self.assertEqual(gn.weight.shape[0], self.initial_channels + 8)
+
+    def test_grow_custom_params_device_transfer(self):
+        """Test that custom params on a different device are moved automatically (line 479)."""
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA not available")
+        gn = GrowingGroupNorm(
+            num_groups=self.num_groups,
+            num_channels=self.initial_channels,
+            device=torch.device("cuda"),
+        )
+        cpu_weights = torch.ones(8)  # intentionally on CPU
+        gn.grow(8, new_weights=cpu_weights)
+        self.assertEqual(gn.weight.device.type, "cuda")
 
 
 if __name__ == "__main__":
