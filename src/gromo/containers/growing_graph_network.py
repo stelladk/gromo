@@ -243,10 +243,7 @@ class GrowingGraphNetwork(GrowingContainer):
         eps = 1e-8
         scalar_product = torch.einsum("b...,b...->b", activity, bottleneck)
         act_norm = torch.einsum("b...,b...->b", activity, activity)
-        bott_norm = torch.einsum("b...,b...->b", bottleneck, bottleneck)
-        return -scalar_product.mean() / torch.sqrt(
-            (act_norm.mean() + eps) * (bott_norm.mean() + eps)
-        )
+        return scalar_product.mean() / torch.sqrt((act_norm.mean() + eps))
 
     def bi_level_bottleneck_optimization(
         self,
