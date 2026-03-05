@@ -123,7 +123,6 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
         new_biases: torch.Tensor | None = None,
         new_running_mean: torch.Tensor | None = None,
         new_running_var: torch.Tensor | None = None,
-        device: torch.device | None = None,
     ) -> None:
         """
         Grow the batch normalization layer by adding more features.
@@ -140,8 +139,6 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
             Custom running mean for new features. If None, defaults to zeros.
         new_running_var : torch.Tensor | None, optional
             Custom running variance for new features. If None, defaults to ones.
-        device : torch.device | None, optional
-            Device to place new parameters on. If None, uses current device.
 
         Raises
         ------
@@ -343,7 +340,6 @@ class GrowingLayerNorm(nn.LayerNorm):
         additional_last_dim: int,
         new_weights: torch.Tensor | None = None,
         new_biases: torch.Tensor | None = None,
-        device: torch.device | None = None,
     ) -> None:
         """Grow the LayerNorm by increasing the last dimension
 
@@ -355,8 +351,6 @@ class GrowingLayerNorm(nn.LayerNorm):
             custom weights for the new features, if None defaults to ones, by default None
         new_biases : torch.Tensor | None, optional
             custom bias for the new features, if None defaults to zeros, by default None
-        device : torch.device | None, optional
-            expected device, by default None
 
         Raises
         ------
@@ -401,9 +395,8 @@ class GrowingLayerNorm(nn.LayerNorm):
 
         # Extend affine parameters if enabled
         if getattr(self, "elementwise_affine", False):
-            if device is None:
-                assert isinstance(self.weight, torch.Tensor)
-                device = self.weight.device
+            assert isinstance(self.weight, torch.Tensor)
+            device = self.weight.device
 
             self._extend_parameter(
                 "weight",
@@ -530,7 +523,6 @@ class GrowingGroupNorm(nn.GroupNorm):
         additional_channels: int,
         new_weights: torch.Tensor | None = None,
         new_biases: torch.Tensor | None = None,
-        device: torch.device | None = None,
         new_num_groups: int | None = None,
     ) -> None:
         """Grow the GroupNorm by adding more channels
@@ -543,8 +535,6 @@ class GrowingGroupNorm(nn.GroupNorm):
             custom weights for the new channels, if None defaults to ones, by default None
         new_biases : torch.Tensor | None, optional
             custom bias for the new channels, if None defaults to zeros, by default None
-        device : torch.device | None, optional
-            expected device, by default None
         new_num_groups : int | None, optional
             updated number of groups, if None they are not updated, by default None
 
@@ -576,9 +566,8 @@ class GrowingGroupNorm(nn.GroupNorm):
         self.num_channels = updated_num_channels
 
         if getattr(self, "affine", False):
-            if device is None:
-                assert isinstance(self.weight, torch.Tensor)
-                device = self.weight.device
+            assert isinstance(self.weight, torch.Tensor)
+            device = self.weight.device
 
             self._extend_parameter(
                 "weight",
