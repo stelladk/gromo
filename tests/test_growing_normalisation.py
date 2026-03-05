@@ -384,7 +384,7 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
         self.assertEqual(bn.running_var.dtype, original_dtype)
 
     def test_extend_parameter_none_param(self):
-        """Test _extend_parameter returns early when the attribute is None (line 95)."""
+        """Test _extend_parameter returns early when the attribute is None."""
         bn = GrowingBatchNorm2d(
             num_features=self.initial_features, affine=False, device=self.device
         )
@@ -667,7 +667,7 @@ class TestGrowingLayerNorm(unittest.TestCase):
         self.assertIn("repr_ln", repr_str)
 
     def test_extend_parameter_none_param(self):
-        """Test _extend_parameter returns early when the attribute is None (line 300)."""
+        """Test _extend_parameter returns early when the attribute is None."""
         ln = GrowingLayerNorm(
             normalized_shape=self.initial_features,
             elementwise_affine=False,
@@ -680,7 +680,7 @@ class TestGrowingLayerNorm(unittest.TestCase):
         self.assertIsNone(ln.weight)
 
     def test_extend_parameter_as_buffer(self):
-        """Test as_parameter=False path stores result as a buffer (line 326)."""
+        """Test as_parameter=False path stores result as a buffer."""
         ln = GrowingLayerNorm(normalized_shape=self.initial_features, device=self.device)
         device = ln.weight.device
         # Register a fresh buffer (not an nn.Parameter) so register_buffer succeeds.
@@ -696,17 +696,17 @@ class TestGrowingLayerNorm(unittest.TestCase):
         self.assertEqual(buffers["running_stat"].shape[-1], self.initial_features + 8)
 
     def test_grow_device_inferred_from_weight(self):
-        """Test that device is inferred from self.weight when not passed (line 368)."""
+        """Test that device is inferred from self.weight when not passed."""
         # Construct on CPU explicitly and call grow() without the device kwarg.
         ln = GrowingLayerNorm(
             normalized_shape=self.initial_features, device=torch.device("cpu")
         )
-        ln.grow(8)  # device=None → line 368 branch taken
+        ln.grow(8)  # device is None
         self.assertEqual(ln.weight.device.type, "cpu")
         self.assertEqual(ln.weight.shape[0], self.initial_features + 8)
 
     def test_grow_custom_params_device_transfer(self):
-        """Test that custom params on a different device are moved automatically (line 317)."""
+        """Test that custom params on a different device are moved automatically."""
         if not torch.cuda.is_available():
             self.skipTest("CUDA not available")
         ln = GrowingLayerNorm(
@@ -958,7 +958,7 @@ class TestGrowingGroupNorm(unittest.TestCase):
         self.assertIn("repr_gn", repr_str)
 
     def test_extend_parameter_none_param(self):
-        """Test _extend_parameter returns early when the attribute is None (line 464)."""
+        """Test _extend_parameter returns early when the attribute is None."""
         gn = GrowingGroupNorm(
             num_groups=self.num_groups,
             num_channels=self.initial_channels,
@@ -972,7 +972,7 @@ class TestGrowingGroupNorm(unittest.TestCase):
         self.assertIsNone(gn.weight)
 
     def test_extend_parameter_as_buffer(self):
-        """Test as_parameter=False path stores result as a buffer (line 488)."""
+        """Test as_parameter=False path stores result as a buffer."""
         gn = GrowingGroupNorm(
             num_groups=self.num_groups,
             num_channels=self.initial_channels,
@@ -992,18 +992,18 @@ class TestGrowingGroupNorm(unittest.TestCase):
         self.assertEqual(buffers["running_stat"].shape[0], self.initial_channels + 8)
 
     def test_grow_device_inferred_from_weight(self):
-        """Test that device is inferred from self.weight when not passed (line 537)."""
+        """Test that device is inferred from self.weight when not passed."""
         gn = GrowingGroupNorm(
             num_groups=self.num_groups,
             num_channels=self.initial_channels,
             device=torch.device("cpu"),
         )
-        gn.grow(8)  # device=None → line 537 branch taken
+        gn.grow(8)  # device is None
         self.assertEqual(gn.weight.device.type, "cpu")
         self.assertEqual(gn.weight.shape[0], self.initial_channels + 8)
 
     def test_grow_custom_params_device_transfer(self):
-        """Test that custom params on a different device are moved automatically (line 479)."""
+        """Test that custom params on a different device are moved automatically."""
         if not torch.cuda.is_available():
             self.skipTest("CUDA not available")
         gn = GrowingGroupNorm(
