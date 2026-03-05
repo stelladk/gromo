@@ -151,7 +151,20 @@ class GrowingBatchNorm(nn.modules.batchnorm._BatchNorm):
                 f"additional_features must be positive, got {additional_features}"
             )
 
-        # Update num_features
+        # Validate custom tensor shapes before any mutation
+        for tensor, name in (
+            (new_weights, "weight"),
+            (new_biases, "bias"),
+            (new_running_mean, "running_mean"),
+            (new_running_var, "running_var"),
+        ):
+            if tensor is not None and tensor.shape[0] != additional_features:
+                raise ValueError(
+                    f"new_{name} must have {additional_features} elements, "
+                    f"got {tensor.shape[0]}"
+                )
+
+        # Apply mutations
         self.num_features += additional_features
 
         # Extend affine parameters if enabled
@@ -351,13 +364,36 @@ class GrowingLayerNorm(nn.LayerNorm):
                 f"additional_last_dim must be positive, got {additional_last_dim}"
             )
 
-        # Update normalized_shape metadata used by forward
+        # Compute new normalized_shape without mutating yet
         old = (
             (self.normalized_shape,)
             if isinstance(self.normalized_shape, int)
             else tuple(int(v) for v in self.normalized_shape)
         )
-        self.normalized_shape = (*tuple(old[:-1]), old[-1] + additional_last_dim)
+        new_normalized_shape = (*tuple(old[:-1]), old[-1] + additional_last_dim)
+
+        # Validate custom tensor shapes before any mutation
+        if getattr(self, "elementwise_affine", False):
+            weight_required_shape = (*tuple(self.weight.shape[:-1]), additional_last_dim)
+            if (
+                new_weights is not None
+                and tuple(new_weights.shape) != weight_required_shape
+            ):
+                raise ValueError(
+                    f"new_weight must have shape {weight_required_shape}, "
+                    f"got {tuple(new_weights.shape)}"
+                )
+
+            if getattr(self, "bias", None) is not None and new_biases is not None:
+                bias_required_shape = (*tuple(self.bias.shape[:-1]), additional_last_dim)
+                if tuple(new_biases.shape) != bias_required_shape:
+                    raise ValueError(
+                        f"new_bias must have shape {bias_required_shape}, "
+                        f"got {tuple(new_biases.shape)}"
+                    )
+
+        # Apply mutations
+        self.normalized_shape = new_normalized_shape
 
         # Extend affine parameters if enabled
         if getattr(self, "elementwise_affine", False):
@@ -517,17 +553,21 @@ class GrowingGroupNorm(nn.GroupNorm):
                 f"additional_channels must be positive, got {additional_channels}"
             )
 
-        if new_num_groups is not None:
-            self.num_groups = int(new_num_groups)
+        # Compute updated values without mutating yet
+        updated_num_groups = (
+            int(new_num_groups) if new_num_groups is not None else self.num_groups
+        )
+        updated_num_channels = self.num_channels + int(additional_channels)
 
-        # Update num_channels metadata used by forward
-        self.num_channels += int(additional_channels)
-
-        if self.num_channels % self.num_groups != 0:
+        if updated_num_channels % updated_num_groups != 0:
             raise ValueError(
-                f"After growth: num_channels ({self.num_channels}) must be divisible by "
-                f"num_groups ({self.num_groups})."
+                f"After growth: num_channels ({updated_num_channels}) must be divisible by "
+                f"num_groups ({updated_num_groups})."
             )
+
+        # Apply mutations
+        self.num_groups = updated_num_groups
+        self.num_channels = updated_num_channels
 
         if getattr(self, "affine", False):
             if device is None:
