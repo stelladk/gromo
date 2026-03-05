@@ -512,6 +512,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         options = self.net_conv.dag.define_next_actions()
         for opt in options:
             opt.metrics["scaling_factor"] = 1
+            opt.metrics["active_neurons"] = self.neurons
             opt.expand()
         self.assertIn("2@_a", self.net_conv.dag)
         self.assertIn("2@_b", self.net_conv.dag)
@@ -549,6 +550,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
         options = self.net_conv.dag.define_next_actions(expand_end=True)
         for opt in options:
             opt.metrics["scaling_factor"] = 1
+            opt.metrics["active_neurons"] = self.neurons
             opt.expand()
         self.net_conv.dag.get_edge_module("1", end).extended_output_layer = (
             torch.nn.Conv2d(
