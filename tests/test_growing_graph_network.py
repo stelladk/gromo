@@ -667,7 +667,7 @@ class TestGrowingGraphNetwork(TorchTestCase):
             desired_output = model_guide(x)
 
         bottleneck = {
-            end_linear: desired_output,
+            end_linear: -desired_output,
         }
         activity = {
             start_conv: x,
