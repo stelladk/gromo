@@ -1224,7 +1224,7 @@ class TestLinearGrowingBlock(TorchTestCase):
         block = LinearGrowingBlock(
             in_features=self.in_features,
             out_features=self.in_features,
-            hidden_features=self.hidden_features,
+            hidden_features=self.hidden_neurons,
             activation=torch.nn.ReLU(),
             device=self.device,
             name="test_block_methods",
