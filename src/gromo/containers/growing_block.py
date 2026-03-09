@@ -3,12 +3,16 @@ Module to define a two layer block similar to a BasicBlock in ResNet.
 """
 
 from typing import Any
-from warnings import warn
+from warnings import catch_warnings, filterwarnings, warn
 
 import torch
+from deprecated import deprecated
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.modules.conv2d_growing_module import RestrictedConv2dGrowingModule
+from gromo.modules.conv2d_growing_module import (
+    Conv2dGrowingModule,
+    RestrictedConv2dGrowingModule,
+)
 from gromo.modules.growing_module import GrowingModule
 from gromo.modules.linear_growing_module import LinearGrowingModule
 
@@ -236,7 +240,7 @@ class GrowingBlock(GrowingContainer):
     def extended_forward(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         x: torch.Tensor,
-        mask: dict = {},  # noqa: ARG002
+        mask: dict | None = None,  # noqa: ARG002
     ) -> torch.Tensor:
         """
         Forward pass of the block with the current modifications.
@@ -245,8 +249,8 @@ class GrowingBlock(GrowingContainer):
         ----------
         x: torch.Tensor
             input tensor
-        mask: dict, optional
-            mask tensor (not used), by default {}
+        mask: dict | None, optional
+            mask tensor (not used), by default None
 
         Returns
         -------
@@ -374,14 +378,22 @@ class GrowingBlock(GrowingContainer):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-15,
+        numerical_threshold: float = 1e-6,
         statistical_threshold: float = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
-        use_projected_gradient: bool = True,
+        compute_delta: bool = True,
+        use_covariance: bool = True,
+        alpha_zero: bool = False,
+        omega_zero: bool = False,
+        use_projection: bool = True,
+        ignore_singular_values: bool = False,
     ) -> None:
         """
         Compute the optimal update for second layer and additional neurons.
+
+        This method delegates to the second layer's compute_optimal_updates method,
+        using the specified primitive options.
 
         Parameters
         ----------
@@ -394,23 +406,86 @@ class GrowingBlock(GrowingContainer):
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
             dtype for the computation of the optimal delta and added parameters
-        use_projected_gradient: bool
-            whereas to use the projected gradient ie `tensor_n` or the raw `tensor_m`
+        compute_delta: bool
+            If True, compute and store parameter_update_decrease (delta).
+            Default is True.
+        use_covariance: bool
+            If True, use covariance-based computation for added parameters.
+            Default is True.
+        alpha_zero: bool
+            If True, initialize alpha (added neuron weights) to zero.
+            Default is False.
+        omega_zero: bool
+            If True, initialize omega (outgoing weights) to zero.
+            Default is False.
+        use_projection: bool
+            If True, use projection-based gradient for added parameters.
+            Default is True.
+        ignore_singular_values: bool
+            If True, ignore singular values and treat them as 1, only using singular
+            vectors for the update direction. Default is False.
+
+        Note
+        ----
+        When ``hidden_neurons == 0``, tensor statistics are not initialized,
+        so ``compute_optimal_delta()`` cannot be called. This means that
+        ``tensor_n`` (required for projection) cannot be computed. In this case,
+        ``use_projection`` is automatically set to ``False`` regardless of the
+        parameter value, and the raw gradient (``-tensor_m_prev()``) is used
+        instead of the projected gradient.
+
         """
-        if self.hidden_neurons > 0:
-            _, _, _ = self.second_layer.compute_optimal_delta()
-        else:
+        # When hidden_neurons == 0, tensor statistics aren't initialized, so we need
+        # special handling: set parameter_update_decrease and call
+        # _compute_optimal_added_parameters directly to avoid compute_optimal_delta()
+        # call in compute_optimal_updates()
+        # Note: use_projection must be False when hidden_neurons == 0 because tensor_n
+        # requires delta_raw which is only set by compute_optimal_delta()
+        if self.hidden_neurons == 0:
+            # In the empty-block path there is no natural-gradient update term.
+            # We explicitly set side-effect attributes so first_order_improvement
+            # remains available for all configurations.
+            self.second_layer.optimal_delta_layer = None
+            self.second_layer.delta_raw = None
             self.second_layer.parameter_update_decrease = torch.tensor(
-                0.0, device=self.device
+                0.0,
+                device=self.device,
+                dtype=self.second_layer.weight.dtype,
             )
-        self.second_layer.compute_optimal_added_parameters(
-            numerical_threshold=numerical_threshold,
-            statistical_threshold=statistical_threshold,
-            maximum_added_neurons=maximum_added_neurons,
-            use_projected_gradient=self.hidden_neurons > 0 and use_projected_gradient,
-            dtype=dtype,
-            update_previous=True,
-        )
+
+            # Call private method directly to avoid compute_optimal_delta() call
+            # With hidden_neurons == 0 we cannot compute tensor_n (delta_raw from
+            # compute_optimal_delta() is unavailable). We force use_projection=False
+            # here; the gradient is the correct direction in this case (null-space manifold).
+            self.second_layer._compute_optimal_added_parameters(
+                numerical_threshold=numerical_threshold,
+                statistical_threshold=statistical_threshold,
+                maximum_added_neurons=maximum_added_neurons,
+                update_previous=True,
+                dtype=dtype,
+                use_covariance=use_covariance,
+                alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
+                use_projection=False,  # Must be False when hidden_neurons == 0
+                ignore_singular_values=ignore_singular_values,
+            )
+        else:
+            # When hidden_neurons > 0, delegate to second layer's
+            # compute_optimal_updates method. This will handle compute_optimal_delta()
+            # internally if needed
+            self.second_layer.compute_optimal_updates(
+                numerical_threshold=numerical_threshold,
+                statistical_threshold=statistical_threshold,
+                maximum_added_neurons=maximum_added_neurons,
+                update_previous=True,
+                dtype=dtype,
+                compute_delta=compute_delta,
+                use_covariance=use_covariance,
+                alpha_zero=alpha_zero,
+                omega_zero=omega_zero,
+                use_projection=use_projection,
+                ignore_singular_values=ignore_singular_values,
+            )
 
     def apply_change(
         self,
@@ -544,13 +619,13 @@ class GrowingBlock(GrowingContainer):
 
     def number_of_neurons_to_add(
         self,
-        **kwargs: str | int,
+        **kwargs: Any,
     ) -> int:
         """Get the number of neurons to add in the next growth step.
 
         Parameters
         ----------
-        **kwargs : str | int
+        **kwargs : Any
             method : str
                 Method to use for determining the number of neurons to add.
                 Options are "fixed_proportional".
@@ -564,12 +639,12 @@ class GrowingBlock(GrowingContainer):
         """
         return self.second_layer.number_of_neurons_to_add(**kwargs)
 
-    def complete_growth(self, **extension_kwargs: dict) -> None:
+    def complete_growth(self, **extension_kwargs: Any) -> None:
         """Complete the growth procedure for the block.
 
         Parameters
         ----------
-        **extension_kwargs : dict
+        **extension_kwargs : Any
             Keyword arguments for the extension procedure.
         """
         self.second_layer.complete_growth(**extension_kwargs)
@@ -600,6 +675,9 @@ class LinearGrowingBlock(GrowingBlock):
     extended_mid_activation : torch.nn.Module | None
         activation function to use between the two layers in the extended forward,
         if None use the mid_activation
+    pre_addition_function : torch.nn.Module
+        activation function to use before the addition with the identity,
+        if None use the identity function
     name : str
         name of the block
     kwargs_layer : dict | None
@@ -624,6 +702,7 @@ class LinearGrowingBlock(GrowingBlock):
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         extended_mid_activation: torch.nn.Module | None = None,
+        pre_addition_function: torch.nn.Module = torch.nn.Identity(),
         name: str = "block",
         kwargs_layer: dict | None = None,
         kwargs_first_layer: dict | None = None,
@@ -641,22 +720,31 @@ class LinearGrowingBlock(GrowingBlock):
                 kwargs_second_layer=kwargs_second_layer,
             )
         )
-        first_layer = LinearGrowingModule(
-            in_features=in_features,
-            out_features=hidden_features,
-            name=f"{name}(first_layer)",
-            post_layer_function=mid_activation,
-            extended_post_layer_function=extended_mid_activation,
-            **kwargs_first_layer,
-        )
-        second_layer = LinearGrowingModule(
-            in_features=hidden_features,
-            out_features=out_features,
-            name=f"{name}(second_layer)",
-            target_in_features=target_hidden_features,
-            previous_module=first_layer,
-            **kwargs_second_layer,
-        )
+        with catch_warnings():  # category=UserWarning requires python 3.11
+            # Ignore warnings about the initialization of zero neurons:
+            # UserWarning: Initializing zero-element tensors is a no-op
+            filterwarnings(
+                "ignore",
+                message="Initializing zero-element tensors is a no-op",
+                category=UserWarning,
+            )
+            first_layer = LinearGrowingModule(
+                in_features=in_features,
+                out_features=hidden_features,
+                name=f"{name}(first_layer)",
+                post_layer_function=mid_activation,
+                extended_post_layer_function=extended_mid_activation,
+                **kwargs_first_layer,
+            )
+            second_layer = LinearGrowingModule(
+                in_features=hidden_features,
+                out_features=out_features,
+                name=f"{name}(second_layer)",
+                post_layer_function=pre_addition_function,
+                target_in_features=target_hidden_features,
+                previous_module=first_layer,
+                **kwargs_second_layer,
+            )
         super(LinearGrowingBlock, self).__init__(
             in_features=in_features,
             out_features=out_features,
@@ -669,9 +757,10 @@ class LinearGrowingBlock(GrowingBlock):
         )
 
 
-class RestrictedConv2dGrowingBlock(GrowingBlock):
+class Conv2dGrowingBlock(GrowingBlock):
     """
-    RestrictedConv2dGrowingBlock is a GrowingBlock for RestrictedConv2d layers.
+    Conv2dGrowingBlock is a GrowingBlock for
+    Conv2dGrowingModule layers.
 
     This creates a two-layer block similar to LinearGrowingBlock but using
     RestrictedConv2dGrowingModule layers instead of LinearGrowingModule layers.
@@ -699,6 +788,9 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
     extended_mid_activation : torch.nn.Module | None
         extended activation function to use between the two layers,
         if None use the extended activation function
+    pre_addition_function : torch.nn.Module
+        activation function to use before the addition with the identity,
+        if None use the identity function
     name : str
         name of the block
     kwargs_layer : dict | None
@@ -709,6 +801,8 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         dictionary of arguments for the second layer, if None use kwargs_layer
     downsample : torch.nn.Module
         operation to apply on the residual stream
+    growing_conv_type : type[Conv2dGrowingModule]
+        type of convolutional growing module to use, default is RestrictedConv2dGrowingModule
     device : torch.device | None
         device to use for the block
 
@@ -729,11 +823,13 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
         pre_activation: torch.nn.Module | None = None,
         mid_activation: torch.nn.Module | None = None,
         extended_mid_activation: torch.nn.Module | None = None,
+        pre_addition_function: torch.nn.Module = torch.nn.Identity(),
         name: str = "conv_block",
         kwargs_layer: dict | None = None,
         kwargs_first_layer: dict | None = None,
         kwargs_second_layer: dict | None = None,
         downsample: torch.nn.Module = torch.nn.Identity(),
+        growing_conv_type: type[Conv2dGrowingModule] = RestrictedConv2dGrowingModule,
         device: torch.device | None = None,
     ) -> None:
         pre_activation, mid_activation, kwargs_first_layer, kwargs_second_layer = (
@@ -757,27 +853,35 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
                     f"kernel_size specified in both arguments and kwargs for {name}, "
                     f"using value from kwargs."
                 )
+        with catch_warnings():  # category=UserWarning requires python 3.11
+            # Ignore warnings about the initialization of zero neurons:
+            # UserWarning: Initializing zero-element tensors is a no-op
+            filterwarnings(
+                "ignore",
+                message="Initializing zero-element tensors is a no-op",
+                category=UserWarning,
+            )
+            first_layer = growing_conv_type(
+                in_channels=in_channels,
+                out_channels=hidden_channels,
+                name=f"{name}(first_layer)",
+                post_layer_function=mid_activation,
+                extended_post_layer_function=extended_mid_activation,
+                device=device,
+                **kwargs_first_layer,
+            )
+            second_layer = growing_conv_type(
+                in_channels=hidden_channels,
+                out_channels=out_channels,
+                name=f"{name}(second_layer)",
+                post_layer_function=pre_addition_function,
+                target_in_channels=target_hidden_channels,
+                previous_module=first_layer,
+                device=device,
+                **kwargs_second_layer,
+            )
 
-        first_layer = RestrictedConv2dGrowingModule(
-            in_channels=in_channels,
-            out_channels=hidden_channels,
-            name=f"{name}(first_layer)",
-            post_layer_function=mid_activation,
-            extended_post_layer_function=extended_mid_activation,
-            device=device,
-            **kwargs_first_layer,
-        )
-        second_layer = RestrictedConv2dGrowingModule(
-            in_channels=hidden_channels,
-            out_channels=out_channels,
-            name=f"{name}(second_layer)",
-            target_in_channels=target_hidden_channels,
-            previous_module=first_layer,
-            device=device,
-            **kwargs_second_layer,
-        )
-
-        super(RestrictedConv2dGrowingBlock, self).__init__(
+        super(Conv2dGrowingBlock, self).__init__(
             in_features=in_channels,
             out_features=out_channels,
             pre_activation=pre_activation,
@@ -787,3 +891,17 @@ class RestrictedConv2dGrowingBlock(GrowingBlock):
             downsample=downsample,
             device=device,
         )
+
+
+@deprecated(
+    "Use instead Conv2dGrowingBlock with "
+    "growing_conv_type=RestrictedConv2dGrowingModule (which is the default)."
+)
+class RestrictedConv2dGrowingBlock(Conv2dGrowingBlock):
+    """
+    RestrictedConv2dGrowingBlock is a GrowingBlock for
+    RestrictedConv2dGrowingModule layers.
+
+    This creates a two-layer block similar to Conv2dGrowingBlock but using
+    RestrictedConv2dGrowingModule layers instead of Conv2dGrowingModule layers.
+    """
