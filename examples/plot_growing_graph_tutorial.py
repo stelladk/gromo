@@ -477,7 +477,7 @@ model = GraphModel(
     neuron_lrate=1e-2,
     neuron_batch_size=256,
     loss_fn=criterion,
-    device="cuda",
+    device=device,
 )
 
 print("Initial model:")
