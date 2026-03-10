@@ -604,7 +604,7 @@ class TestGrowingDAG(TorchTestCase):
         self.assertIsNotNone(
             self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.weight
         )
-        self.assertIsNotNone(
+        self.assertIsNone(
             self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.bias
         )
         self.assertTrue(
@@ -613,14 +613,6 @@ class TestGrowingDAG(TorchTestCase):
                 == expansions[0]
                 .dag.get_edge_module("test", self.dag.end)
                 .optimal_delta_layer.weight
-            )
-        )
-        self.assertTrue(
-            torch.all(
-                self.dag.get_edge_module("test", self.dag.end).optimal_delta_layer.bias
-                == expansions[0]
-                .dag.get_edge_module("test", self.dag.end)
-                .optimal_delta_layer.bias
             )
         )
 
@@ -974,7 +966,7 @@ class TestGrowingDAG(TorchTestCase):
         self.dag.add_node_with_two_edges(
             start, "1", end, node_attributes=self.init_node_attributes
         )
-        self.assertEqual(len(list(self.dag.parameters())), len(self.dag.edges) * 2)
+        self.assertEqual(len(list(self.dag.parameters())), len(self.dag.edges) * 2 - 1)
 
     def test_count_parameters_all(self) -> None:
         self.assertEqual(self.dag.count_parameters_all(), 0)
@@ -987,7 +979,7 @@ class TestGrowingDAG(TorchTestCase):
             self.dag.root, "1", self.dag.end, node_attributes=self.init_node_attributes
         )
         numel += self.in_features * self.hidden_size + self.hidden_size
-        numel += self.hidden_size * self.out_features + self.out_features
+        numel += self.hidden_size * self.out_features
         self.assertEqual(self.dag.count_parameters_all(), numel)
 
     def test_count_parameters(self) -> None:
@@ -1001,7 +993,7 @@ class TestGrowingDAG(TorchTestCase):
         )
         numel = self.in_features * self.hidden_size + self.hidden_size
         self.assertEqual(self.dag.count_parameters([(start, "1")]), numel)
-        numel += self.hidden_size * self.out_features + self.out_features
+        numel += self.hidden_size * self.out_features
         self.assertEqual(self.dag.count_parameters([(start, "1"), ("1", end)]), numel)
 
     def test_evaluate(self) -> None:
@@ -1214,9 +1206,7 @@ class TestGrowingDAG(TorchTestCase):
         self.assertFalse(
             torch.any(expansion.dag.get_edge_module("test", self.dag.end).weight)
         )
-        self.assertFalse(
-            torch.any(expansion.dag.get_edge_module("test", self.dag.end).bias)
-        )
+        self.assertIsNone(expansion.dag.get_edge_module("test", self.dag.end).bias)
         self.assertEqual(
             expansion.in_edges, [self.dag.get_edge_module(self.dag.root, "test")]
         )
@@ -1333,9 +1323,7 @@ class TestGrowingDAG(TorchTestCase):
         self.assertFalse(
             torch.any(expansion.dag.get_edge_module("test", self.dag_conv.end).weight)
         )
-        self.assertFalse(
-            torch.any(expansion.dag.get_edge_module("test", self.dag_conv.end).bias)
-        )
+        self.assertIsNone(expansion.dag.get_edge_module("test", self.dag_conv.end).bias)
         self.assertEqual(
             expansion.previous_nodes,
             [self.dag_conv.get_node_module(expansion.previous_node)],
