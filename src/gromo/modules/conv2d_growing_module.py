@@ -1434,7 +1434,7 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         new_layer = torch.nn.Conv2d(
             weight.shape[1],
             weight.shape[0],
-            bias=self.use_bias,
+            bias=(bias is not None),
             device=self.device,
             kernel_size=self.kernel_size,  # pyright: ignore[reportArgumentType]
             stride=self.stride,  # pyright: ignore[reportArgumentType]
