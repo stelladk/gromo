@@ -93,18 +93,19 @@ def theoretical_s_1(n: int, c: int) -> tuple[torch.Tensor, ...]:
 
     Returns
     -------
-    x1:
-        input tensor 1
-    x2:
-        input tensor 2
-    is1:
-        theoretical value of the tensor nS for x1
-    is2:
-        theoretical value of the tensor 2nS for (x1, x2)
-    os1:
-        theoretical value of the tensor nS for the output of W(x1)
-    os2:
-        theoretical value of the tensor 2nS for the output of W((x1, x2))
+    tuple[torch.Tensor, ...]
+        x1:
+            input tensor 1
+        x2:
+            input tensor 2
+        is1:
+            theoretical value of the tensor nS for x1
+        is2:
+            theoretical value of the tensor 2nS for (x1, x2)
+        os1:
+            theoretical value of the tensor nS for the output of W(x1)
+        os2:
+            theoretical value of the tensor 2nS for the output of W((x1, x2))
     """
     # Pre-compute common values to avoid redundant calculations
     device = global_device()

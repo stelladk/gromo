@@ -145,7 +145,6 @@ class GraphModel(GrowingContainer):
         neuron_batch_size: int,
         loss_fn: torch.nn.Module,
         device: torch.device | str | None = None,
-        **kwargs,
     ) -> None:
         super().__init__(in_features, out_features, device)
 
@@ -212,30 +211,27 @@ class GraphModel(GrowingContainer):
 ###############################################################################
 def update_computation(
     model: GraphModel,
-    actions: list,
     dataloader: torch.utils.data.DataLoader,
     criterion: torch.nn.Module,
-):
+) -> tuple[dict]:
     """Run a forward-backward pass and collect per-node statistics.
 
     Parameters
     ----------
-    model:
+    model: GraphModel
         The graph model whose statistics buffers are already initialised.
-    actions:
-        Candidate growth actions (used only to satisfy the API; statistics
-        are collected for all nodes).
-    dataloader:
+    dataloader: torch.utils.data.DataLoader
         Training batches ``(X, Y)``.
-    criterion:
+    criterion: torch.nn.Module
         Loss function (must support ``reduction="mean"``).
 
     Returns
     -------
-    pre_activities_grad : dict[str, Tensor]
-        Concatenated pre-activation gradients for every non-root node.
-    inputs : dict[str, Tensor]
-        Concatenated input activations for every node.
+    tuple[dict]
+        pre_activities_grad : dict[str, Tensor]
+            Concatenated pre-activation gradients for every non-root node.
+        inputs : dict[str, Tensor]
+            Concatenated input activations for every node.
     """
     all_nodes = list(model.growing_dag.dag.nodes)
 
@@ -280,10 +276,9 @@ def update_computation(
 ###############################################################################
 def calculate_bottleneck(
     model: GraphModel,
-    actions: list,
     pre_activities_grad: dict,
     inputs: dict,
-) -> dict:
+) -> dict[str, torch.Tensor]:
     """Compute the expressivity bottleneck for each node.
 
     For a node :math:`v`, the bottleneck vector is:
@@ -300,19 +295,22 @@ def calculate_bottleneck(
 
     Parameters
     ----------
-    model:
+    model: GraphModel
         Graph model after ``compute_optimal_delta()`` has been called.
-    actions:
-        Candidate growth actions (used to retrieve edge modules).
-    pre_activities_grad:
-        Output of :func:`update_computation`.
-    inputs:
-        Output of :func:`update_computation`.
+    pre_activities_grad: dict
+        saved gradient of the pre-activities of each node.
+    inputs: dict
+        saved input of each node.
 
     Returns
     -------
-    bottleneck : dict[str, Tensor]
+    bottleneck : dict[str, torch.Tensor]
         Residual gradient vector for each node.
+
+    Raises
+    ------
+    KeyError
+        if the activity gradient or the input of a node was not recorded
     """
     bottleneck = {}
     with torch.no_grad():
@@ -368,13 +366,13 @@ def grow(
 
     Parameters
     ----------
-    model:
+    model: GraphModel
         The ``GraphModel`` to grow.
-    train_dataloader:
+    train_dataloader: torch.utils.data.DataLoader
         Used for statistics accumulation and line search.
-    val_dataloader:
+    val_dataloader: torch.utils.data.DataLoader
         Used for final candidate ranking to avoid over-fitting.
-    criterion:
+    criterion: torch.nn.Module
         Loss function (``reduction="mean"``).
     """
     # Enumerate what expansions are possible in the current DAG.
