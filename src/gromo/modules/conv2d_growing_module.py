@@ -1312,7 +1312,7 @@ class Conv2dGrowingModule(GrowingModule):
             stride=self.stride,  # pyright: ignore[reportArgumentType]
             padding=self.padding,  # pyright: ignore[reportArgumentType]
             dilation=self.dilation,  # pyright: ignore[reportArgumentType]
-            bias=self.use_bias,
+            bias=False,
             device=self.device,
         )
 

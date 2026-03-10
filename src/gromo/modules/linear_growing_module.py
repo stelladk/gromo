@@ -1038,7 +1038,7 @@ class LinearGrowingModule(GrowingModule):
         """
         # Create a linear layer for input extension
         self.extended_input_layer = torch.nn.Linear(
-            extension_size, self.out_features, bias=self.use_bias, device=self.device
+            extension_size, self.out_features, bias=False, device=self.device
         )
 
     def create_layer_out_extension(self, extension_size: int) -> None:
