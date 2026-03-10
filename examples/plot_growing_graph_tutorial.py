@@ -379,13 +379,11 @@ def grow(
     actions = model.growing_dag.dag.define_next_actions(expand_end=True)
 
     model.init_computation()
-    pre_activities_grad, inputs = update_computation(
-        model, actions, train_dataloader, criterion
-    )
+    pre_activities_grad, inputs = update_computation(model, train_dataloader, criterion)
 
     # Solve for optimal weight increments for every candidate edge.
     model.compute_optimal_delta()
-    bottleneck = calculate_bottleneck(model, actions, pre_activities_grad, inputs)
+    bottleneck = calculate_bottleneck(model, pre_activities_grad, inputs)
     del pre_activities_grad
 
     model.reset_computation()
