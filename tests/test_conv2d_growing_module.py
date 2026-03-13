@@ -2184,6 +2184,8 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
                 msg="layer_out has no extended output when only input extension added",
             )
 
+            layer_out.apply_change(extension_size=extension_size)
+
         # Subtest 2: Without features (hidden_channels=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden channels
@@ -2257,6 +2259,8 @@ class TestCreateLayerExtensionsConv2d(TestConv2dGrowingModuleBase):
                 delta=expected_input_ext_std * 0.5,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
+
+            layer_out.apply_change(extension_size=extension_size)
 
 
 class TestNeuronCountingConv2d(TestConv2dGrowingModuleBase):

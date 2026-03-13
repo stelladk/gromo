@@ -734,7 +734,7 @@ class LinearGrowingModule(GrowingModule):
                 f"the main layer bias ({self.use_bias =}) is not None."
             )
         new_layer = torch.nn.Linear(
-            weight.shape[1], weight.shape[0], bias=self.use_bias, device=self.device
+            weight.shape[1], weight.shape[0], bias=(bias is not None), device=self.device
         )
         new_layer.weight = torch.nn.Parameter(weight)
         if bias is not None:
@@ -1038,7 +1038,7 @@ class LinearGrowingModule(GrowingModule):
         """
         # Create a linear layer for input extension
         self.extended_input_layer = torch.nn.Linear(
-            extension_size, self.out_features, bias=self.use_bias, device=self.device
+            extension_size, self.out_features, bias=False, device=self.device
         )
 
     def create_layer_out_extension(self, extension_size: int) -> None:

@@ -868,6 +868,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     def test_layer_in_extension(self):
         """Test input layer extension functionality."""
+        # without bias
         layer = LinearGrowingModule(3, 1, use_bias=False, name="layer1")
         layer.weight = torch.nn.Parameter(torch.ones(1, 3))
         self.assertEqual(layer.number_of_parameters(), 3)
@@ -884,6 +885,25 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         x = torch.tensor([[1, 2, 3, 4]], dtype=torch.float32)
         y = layer(x)
         self.assertAllClose(y, torch.tensor([[46.0]]))
+
+        # with bias
+        layer = LinearGrowingModule(3, 1, use_bias=True, name="layer1")
+        layer.weight = torch.nn.Parameter(torch.ones(1, 3))
+        layer.bias = torch.nn.Parameter(torch.tensor([10.0]))
+        self.assertEqual(layer.number_of_parameters(), 4)
+        self.assertEqual(layer.in_features, 3)
+
+        x = torch.tensor([[1, 2, 3]], dtype=torch.float32)
+        y = layer(x)
+        self.assertAllClose(y, torch.tensor([[16.0]]))
+
+        layer.layer_in_extension(torch.tensor([[10]], dtype=torch.float32))
+        self.assertEqual(layer.number_of_parameters(), 5)
+        self.assertEqual(layer.in_features, 4)
+        self.assertEqual(layer.layer.in_features, 4)
+        x = torch.tensor([[1, 2, 3, 4]], dtype=torch.float32)
+        y = layer(x)
+        self.assertAllClose(y, torch.tensor([[56.0]]))
 
     def test_layer_out_extension(self):
         # without bias
@@ -3807,6 +3827,8 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                 msg="layer_out has no extended output when only input extension is added",
             )
 
+            layer_out.apply_change(extension_size=extension_size)
+
         # Subtest 2: Without features (hidden_features=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden features
@@ -3870,6 +3892,8 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                 delta=expected_input_ext_std * 0.5,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
+
+            layer_out.apply_change(extension_size=extension_size)
 
     def test_create_layer_extensions_mixed_initializations(self) -> None:
         """Test create_layer_extensions with mixed initializations."""
@@ -3961,6 +3985,8 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             z_ext,
             msg="layer_out has no extended output when only input extension is added",
         )
+
+        layer_out.apply_change(extension_size=output_extension_size)
 
     def test_create_layer_extensions_unknown_initialization(self) -> None:
         """Test create_layer_extensions with unknown initialization raises exception."""
@@ -4098,12 +4124,11 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
     def test_complete_growth_increases_in_features(self) -> None:
         """Test that complete_growth grows the layer to target size."""
         # Create two connected layers
-        # Using use_bias=False to avoid bias assertion in apply_change
         layer1 = LinearGrowingModule(
             in_features=5,
             out_features=3,
             target_in_features=6,
-            use_bias=False,
+            use_bias=True,
             device=global_device(),
             name="layer1",
         )
@@ -4111,7 +4136,7 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
             in_features=3,
             out_features=7,
             target_in_features=6,
-            use_bias=False,
+            use_bias=True,
             previous_module=layer1,
             device=global_device(),
             name="layer2",
