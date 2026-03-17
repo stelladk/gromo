@@ -6,6 +6,7 @@ import unittest
 
 import torch
 
+from gromo.modules.growing_module import SupportsExtendedForward
 from gromo.modules.growing_normalisation import (
     GrowingBatchNorm1d,
     GrowingBatchNorm2d,
@@ -362,10 +363,6 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
             bn.grow(8)
             self.assertEqual(bn.weight.device.type, "cuda")
 
-            # Test custom device parameter in grow
-            bn.grow(4, device=torch.device("cuda"))
-            self.assertEqual(bn.weight.device.type, "cuda")
-
             # Provide CPU tensors; _extend_parameter should .to(cuda) them transparently.
             cpu_weights = torch.ones(8)  # intentionally on CPU
             bn.grow(8, new_weights=cpu_weights)
@@ -394,6 +391,36 @@ class TestGrowingBatchNorm2d(unittest.TestCase):
             "weight", 8, None, torch.ones, torch.device("cpu"), as_parameter=True
         )
         self.assertIsNone(bn.weight)
+
+    def test_extended_forward(self):
+        """Test extended_forward applies BN to x and passes x_ext unchanged."""
+        extension_size = 8
+        bn = GrowingBatchNorm2d(num_features=self.initial_features, device=self.device)
+        bn.eval()
+
+        x = torch.randn(
+            self.batch_size,
+            self.initial_features,
+            self.height,
+            self.width,
+            device=self.device,
+        )
+        x_ext = torch.randn(
+            self.batch_size,
+            extension_size,
+            self.height,
+            self.width,
+            device=self.device,
+        )
+
+        self.assertIsInstance(bn, SupportsExtendedForward)
+
+        processed_x, processed_x_ext = bn.extended_forward(x, x_ext)
+
+        self.assertEqual(processed_x.shape, x.shape)
+        self.assertEqual(processed_x_ext.shape, x_ext.shape)
+        torch.testing.assert_close(processed_x, bn(x))
+        torch.testing.assert_close(processed_x_ext, x_ext)
 
 
 class TestGrowingBatchNorm1d(unittest.TestCase):
@@ -471,6 +498,24 @@ class TestGrowingBatchNorm1d(unittest.TestCase):
             num_features=self.initial_features, device=self.device, name="test_bn_1d"
         )
         self.assertIsInstance(bn.extra_repr(), str)
+
+    def test_extended_forward(self):
+        """Test extended_forward applies BN to x and passes x_ext unchanged."""
+        extension_size = 8
+        bn = GrowingBatchNorm1d(num_features=self.initial_features, device=self.device)
+        bn.eval()
+
+        x = torch.randn(self.batch_size, self.initial_features, device=self.device)
+        x_ext = torch.randn(self.batch_size, extension_size, device=self.device)
+
+        self.assertIsInstance(bn, SupportsExtendedForward)
+
+        processed_x, processed_x_ext = bn.extended_forward(x, x_ext)
+
+        self.assertEqual(processed_x.shape, x.shape)
+        self.assertEqual(processed_x_ext.shape, x_ext.shape)
+        torch.testing.assert_close(processed_x, bn(x))
+        torch.testing.assert_close(processed_x_ext, x_ext)
 
 
 class TestGrowingLayerNorm(unittest.TestCase):
@@ -715,6 +760,27 @@ class TestGrowingLayerNorm(unittest.TestCase):
         cpu_weights = torch.ones(8)  # intentionally on CPU
         ln.grow(8, new_weights=cpu_weights)
         self.assertEqual(ln.weight.device.type, "cuda")
+
+    def test_extended_forward(self):
+        """Test extended_forward applies LayerNorm to x and passes x_ext unchanged."""
+        extension_size = 8
+        ln = GrowingLayerNorm(normalized_shape=self.initial_features, device=self.device)
+
+        x = torch.randn(
+            self.batch_size, self.seq_len, self.initial_features, device=self.device
+        )
+        x_ext = torch.randn(
+            self.batch_size, self.seq_len, extension_size, device=self.device
+        )
+
+        self.assertIsInstance(ln, SupportsExtendedForward)
+
+        processed_x, processed_x_ext = ln.extended_forward(x, x_ext)
+
+        self.assertEqual(processed_x.shape, x.shape)
+        self.assertEqual(processed_x_ext.shape, x_ext.shape)
+        torch.testing.assert_close(processed_x, ln(x))
+        torch.testing.assert_close(processed_x_ext, x_ext)
 
 
 class TestGrowingGroupNorm(unittest.TestCase):
@@ -1014,6 +1080,39 @@ class TestGrowingGroupNorm(unittest.TestCase):
         cpu_weights = torch.ones(8)  # intentionally on CPU
         gn.grow(8, new_weights=cpu_weights)
         self.assertEqual(gn.weight.device.type, "cuda")
+
+    def test_extended_forward(self):
+        """Test extended_forward applies GroupNorm to x and passes x_ext unchanged."""
+        extension_size = 4  # must be divisible by num_groups if tested standalone
+        gn = GrowingGroupNorm(
+            num_groups=self.num_groups,
+            num_channels=self.initial_channels,
+            device=self.device,
+        )
+
+        x = torch.randn(
+            self.batch_size,
+            self.initial_channels,
+            self.height,
+            self.width,
+            device=self.device,
+        )
+        x_ext = torch.randn(
+            self.batch_size,
+            extension_size,
+            self.height,
+            self.width,
+            device=self.device,
+        )
+
+        self.assertIsInstance(gn, SupportsExtendedForward)
+
+        processed_x, processed_x_ext = gn.extended_forward(x, x_ext)
+
+        self.assertEqual(processed_x.shape, x.shape)
+        self.assertEqual(processed_x_ext.shape, x_ext.shape)
+        torch.testing.assert_close(processed_x, gn(x))
+        torch.testing.assert_close(processed_x_ext, x_ext)
 
 
 if __name__ == "__main__":

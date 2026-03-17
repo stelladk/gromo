@@ -482,60 +482,61 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         - without extension_size and without self.eigenvalues_extension
         (error on apply change)
         """
-        warnings.filterwarnings(
-            "ignore",
-            ".*The extended post layer function may get a variable input size.*",
-            UserWarning,
-        )
-
-        with self.subTest("Growable post layer function"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                ".*The extended post layer function may get a variable input size.*",
+                UserWarning,
             )
-            second_module.apply_change(apply_previous=True, extension_size=2)
-            y = second_module(first_module(self.input_x))
-            self.assertIsInstance(y, torch.Tensor)
 
-        with self.subTest("Growable post layer function in a Sequential"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=torch.nn.Sequential(
-                    torch.nn.Identity(), GrowableIdentity(3)
+            with self.subTest("Growable post layer function"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3)
                 )
-            )
-            second_module.apply_change(apply_previous=True, extension_size=2)
-            y = second_module(first_module(self.input_x))
-            self.assertIsInstance(y, torch.Tensor)
+                second_module.apply_change(apply_previous=True, extension_size=2)
+                y = second_module(first_module(self.input_x))
+                self.assertIsInstance(y, torch.Tensor)
 
-        with self.subTest("Non-growable post layer function"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=SizedIdentity(3)
-            )
-            second_module.apply_change(apply_previous=True, extension_size=2)
-            with self.assertRaises(ValueError):
-                first_module(self.input_x)
+            with self.subTest("Growable post layer function in a Sequential"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=torch.nn.Sequential(
+                        torch.nn.Identity(), GrowableIdentity(3)
+                    )
+                )
+                second_module.apply_change(apply_previous=True, extension_size=2)
+                y = second_module(first_module(self.input_x))
+                self.assertIsInstance(y, torch.Tensor)
 
-        with self.subTest("Incorrect extension size"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3)
-            )
-            second_module.apply_change(apply_previous=True, extension_size=3)
-            with self.assertRaises(ValueError):
-                first_module(self.input_x)
+            with self.subTest("Non-growable post layer function"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=SizedIdentity(3)
+                )
+                second_module.apply_change(apply_previous=True, extension_size=2)
+                with self.assertRaises(ValueError):
+                    first_module(self.input_x)
 
-        with self.subTest("No extension size but eigenvalues_extension set"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3), include_eigenvalues=True
-            )
-            second_module.apply_change(apply_previous=True)
-            y = second_module(first_module(self.input_x))
-            self.assertIsInstance(y, torch.Tensor)
+            with self.subTest("Incorrect extension size"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3)
+                )
+                second_module.apply_change(apply_previous=True, extension_size=3)
+                with self.assertRaises(ValueError):
+                    first_module(self.input_x)
 
-        with self.subTest("No extension size and no eigenvalues_extension"):
-            first_module, second_module = self.create_demo_layers_with_extension(
-                first_layer_post_layer=GrowableIdentity(3)
-            )
-            with self.assertRaises(AssertionError):
+            with self.subTest("No extension size but eigenvalues_extension set"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3), include_eigenvalues=True
+                )
                 second_module.apply_change(apply_previous=True)
+                y = second_module(first_module(self.input_x))
+                self.assertIsInstance(y, torch.Tensor)
+
+            with self.subTest("No extension size and no eigenvalues_extension"):
+                first_module, second_module = self.create_demo_layers_with_extension(
+                    first_layer_post_layer=GrowableIdentity(3)
+                )
+                with self.assertRaises(AssertionError):
+                    second_module.apply_change(apply_previous=True)
 
     def test_compute_s(self):
         """Test S tensor computation with optimized setup and helper methods."""
@@ -869,6 +870,7 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
 
     def test_layer_in_extension(self):
         """Test input layer extension functionality."""
+        # without bias
         layer = LinearGrowingModule(3, 1, use_bias=False, name="layer1")
         layer.weight = torch.nn.Parameter(torch.ones(1, 3))
         self.assertEqual(layer.number_of_parameters(), 3)
@@ -885,6 +887,25 @@ class TestLinearGrowingModule(TestLinearGrowingModuleBase):
         x = torch.tensor([[1, 2, 3, 4]], dtype=torch.float32)
         y = layer(x)
         self.assertAllClose(y, torch.tensor([[46.0]]))
+
+        # with bias
+        layer = LinearGrowingModule(3, 1, use_bias=True, name="layer1")
+        layer.weight = torch.nn.Parameter(torch.ones(1, 3))
+        layer.bias = torch.nn.Parameter(torch.tensor([10.0]))
+        self.assertEqual(layer.number_of_parameters(), 4)
+        self.assertEqual(layer.in_features, 3)
+
+        x = torch.tensor([[1, 2, 3]], dtype=torch.float32)
+        y = layer(x)
+        self.assertAllClose(y, torch.tensor([[16.0]]))
+
+        layer.layer_in_extension(torch.tensor([[10]], dtype=torch.float32))
+        self.assertEqual(layer.number_of_parameters(), 5)
+        self.assertEqual(layer.in_features, 4)
+        self.assertEqual(layer.layer.in_features, 4)
+        x = torch.tensor([[1, 2, 3, 4]], dtype=torch.float32)
+        y = layer(x)
+        self.assertAllClose(y, torch.tensor([[56.0]]))
 
     def test_layer_out_extension(self):
         # without bias
@@ -3812,6 +3833,8 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                 msg="layer_out has no extended output when only input extension is added",
             )
 
+            layer_out.apply_change(extension_size=extension_size)
+
         # Subtest 2: Without features (hidden_features=0)
         with self.subTest(case="without_features"):
             # Create two connected growing modules with 0 hidden features
@@ -3826,16 +3849,20 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             # Note: This test verifies the fallback behavior works correctly
             extension_size = 2
 
-            with self.assertWarns(UserWarning):
-                # UserWarning: std(): degrees of freedom is <= 0. Correction should
-                # be strictly less than the reduction factor (input numel divided by
-                # output numel).
-                # This happens because the layer has no weights to compute std from.
+            # Check that kaiming_initialization fallback is called
+            with mock.patch.object(
+                layer_out,
+                "kaiming_initialization",
+                wraps=layer_out.kaiming_initialization,
+            ) as kaiming_mock:
                 layer_out.create_layer_extensions(
                     extension_size=extension_size,
                     output_extension_init="copy_uniform",
                     input_extension_init="copy_uniform",
                 )
+
+            # For layer sizes 5 -> 0 -> 7, use Kaiming fallback for all but output bias
+            self.assertEqual(kaiming_mock.call_count, 3)
 
             # Verify extensions were created
             self.assertIsInstance(
@@ -3856,10 +3883,10 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             # Initialize manually with fallback behavior
             # For extended_output_layer:
             # fan_in = self.config.LAYER_DIMS["demo_1"][0] (== 5)
-            expected_output_ext_std = 1.0 / (self.config.LAYER_DIMS["demo_1"][0] ** 0.5)
+            expected_output_ext_std = (2.0 / self.config.LAYER_DIMS["demo_1"][0]) ** 0.5
             # For extended_input_layer:
             # fan_in = extension_size (== 2)
-            expected_input_ext_std = 1.0 / (extension_size**0.5)
+            expected_input_ext_std = (2.0 / extension_size) ** 0.5
 
             # Verify std matches expected values
             # Allow tolerance for small sample statistics
@@ -3875,6 +3902,64 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
                 delta=expected_input_ext_std * 0.5,
                 msg=f"extended_input_layer std should be ~{expected_input_ext_std}",
             )
+
+            layer_out.apply_change(extension_size=extension_size)
+
+    @unittest_parametrize(({"bias": False}, {"bias": True}))
+    def test_create_layer_extensions_with_kaiming_matches_pytorch(
+        self, bias: bool
+    ) -> None:
+        """Test Kaiming extension init matches PyTorch fan-in behavior."""
+        extension_size = 18
+
+        for test_case, features in (("with_features", 15), ("without_features", 0)):
+            with self.subTest(case=test_case):
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        ".*Initializing zero-element tensors is a no-op.*",
+                        UserWarning,
+                    )
+                    layer_in, layer_out = self.create_demo_layers(
+                        bias=bias,
+                        hidden_features=features,
+                    )
+
+                layer_out.create_layer_extensions(
+                    extension_size=extension_size,
+                    output_extension_init="kaiming",
+                    input_extension_init="kaiming",
+                )
+
+                ref_in_weight = torch.empty(
+                    (
+                        layer_out.out_features,
+                        layer_out.in_features + extension_size,
+                    ),
+                    device=global_device(),
+                )
+
+                torch.nn.init.kaiming_uniform_(ref_in_weight)
+                ref_in_weight = ref_in_weight[:, -extension_size:]
+
+                assert isinstance(layer_out.extended_input_layer, torch.nn.Linear)
+                self.assertAlmostEqual(
+                    layer_out.extended_input_layer.weight.std().item(),
+                    ref_in_weight.std().item(),
+                    delta=ref_in_weight.std().item() * 0.1,
+                    msg="extended_input_layer weight std should match PyTorch Kaiming",
+                )
+
+                assert isinstance(layer_in.extended_output_layer, torch.nn.Linear)
+                ref_out_weight = torch.empty_like(layer_in.extended_output_layer.weight)
+                torch.nn.init.kaiming_uniform_(ref_out_weight)
+
+                self.assertAlmostEqual(
+                    layer_in.extended_output_layer.weight.std().item(),
+                    ref_out_weight.std().item(),
+                    delta=ref_out_weight.std().item() * 0.1,
+                    msg="extended_output_layer weight std should match PyTorch Kaiming",
+                )
 
     def test_create_layer_extensions_mixed_initializations(self) -> None:
         """Test create_layer_extensions with mixed initializations."""
@@ -3966,6 +4051,8 @@ class TestCreateLayerExtensions(TestLinearGrowingModuleBase):
             z_ext,
             msg="layer_out has no extended output when only input extension is added",
         )
+
+        layer_out.apply_change(extension_size=output_extension_size)
 
     def test_create_layer_extensions_unknown_initialization(self) -> None:
         """Test create_layer_extensions with unknown initialization raises exception."""
@@ -4103,12 +4190,11 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
     def test_complete_growth_increases_in_features(self) -> None:
         """Test that complete_growth grows the layer to target size."""
         # Create two connected layers
-        # Using use_bias=False to avoid bias assertion in apply_change
         layer1 = LinearGrowingModule(
             in_features=5,
             out_features=3,
             target_in_features=6,
-            use_bias=False,
+            use_bias=True,
             device=global_device(),
             name="layer1",
         )
@@ -4116,7 +4202,7 @@ class TestNeuronCountingAndGrowth(TestLinearGrowingModuleBase):
             in_features=3,
             out_features=7,
             target_in_features=6,
-            use_bias=False,
+            use_bias=True,
             previous_module=layer1,
             device=global_device(),
             name="layer2",

@@ -20,6 +20,8 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Change how size-dependent post_layer_function modules handle extended activities in the growing module framework (:gh:`224` by `Théo Rudkiewicz`_)
+- Compute first order improvement for `GrowingDAG` (:gh:`210` by `Stella Douka`_)
 - Implement `GrowingLayerNorm` and `GrowingGroupNorm` (:gh:`211` by `Stella Douka`_)
 - Add a new `evaluate_model`,  `gradient_descent` and `compute_statistics` functions (:gh:`203` by `Théo Rudkiewicz`_)
 - Reduce `ruff check` scope and make it blocking in CI/CD (:gh:`207` by `Théo Rudkiewicz`_)
@@ -89,6 +91,8 @@ Enhancements
 Bugs
 ~~~~
 
+- Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
+- Fix lingering modules that were not properly deleted (:gh:`210` by `Stella Douka`_)
 - Fix sub-modules that are not registered in pytorch (:gh:`179` by `Stella Douka`_)
 - Fix persistent value of input volume (:gh:`174` by `Stella Douka`_)
 - Fix memory leak in tensor updates (:gh:`138` by `Stella Douka`_)
