@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Iterator
+from typing import Any, Iterator, Protocol, runtime_checkable
 
 import numpy as np
 import torch
@@ -415,6 +415,7 @@ class MergeGrowingModule(torch.nn.Module):
         Compute the optimal delta for each previous layer using current S and M tensors.
         dW* = M S[-1]^-1 (if needed we use the pseudo-inverse)
         Compute dW* (and dBias* if needed) and update the optimal_delta_layer attribute.
+
         Parameters
         ----------
         update: bool, optional
@@ -426,17 +427,18 @@ class MergeGrowingModule(torch.nn.Module):
             matrix is invertible
         dtype: torch.dtype
             dtype for S and M during the computation
+
         Returns
         -------
         list[tuple[torch.Tensor, torch.Tensor]] | None
             optimal delta for the weights and the biases if needed
         """
-        assert (
-            self.previous_tensor_s is not None
-        ), f"No previous tensor S for {self.name}."
-        assert (
-            self.previous_tensor_m is not None
-        ), f"No previous tensor M for {self.name}."
+        assert self.previous_tensor_s is not None, (
+            f"No previous tensor S for {self.name}."
+        )
+        assert self.previous_tensor_m is not None, (
+            f"No previous tensor M for {self.name}."
+        )
         previous_tensor_s = self.previous_tensor_s()
         previous_tensor_m = self.previous_tensor_m()
         assert previous_tensor_s.shape[0] == self.total_in_features, (
@@ -673,6 +675,45 @@ class MergeGrowingModule(torch.nn.Module):
         self.next_modules = []
 
 
+@runtime_checkable
+class SupportsExtendedForward(Protocol):
+    """Protocol for modules that provide an extended_forward method.
+
+    Modules implementing this protocol can be used inside ``post_layer_function``
+    of a :class:`GrowingModule` without requiring a separate
+    ``extended_post_layer_function``.
+
+    :meth:`extended_forward` receives both the *main* pre-activation ``x`` (N
+    channels / features) and the *extension* pre-activation ``x_ext`` (M channels
+    / features), and must return both processed tensors.  This mirrors the
+    ``(activity, supplementary_activity)`` convention of
+    :meth:`GrowingModule.extended_forward`.
+    """
+
+    def extended_forward(
+        self, x: torch.Tensor | None, x_ext: torch.Tensor | None
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply the module to both the main and extension pre-activations.
+
+        Parameters
+        ----------
+        x: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant.
+        x_ext: torch.Tensor | None
+            Extension pre-activation tensor (M channels / features), or ``None``
+            when there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(processed_x, processed_x_ext)`` — both tensors after applying
+            the module, retaining their respective shapes.  ``None`` inputs
+            propagate as ``None`` outputs.
+        """
+        ...
+
+
 class GrowingModule(torch.nn.Module):
     """
     Abstract class for a Module of dynamic size
@@ -750,24 +791,21 @@ class GrowingModule(torch.nn.Module):
         self.layer: torch.nn.Module = layer.to(self.device)
         # TODO: don't allow non-linearity if prev module is merge
         self.post_layer_function: torch.nn.Module = post_layer_function.to(self.device)
-        if extended_post_layer_function is None:
-            self.extended_post_layer_function = self.post_layer_function
-        else:
-            self.extended_post_layer_function = extended_post_layer_function.to(
-                self.device
-            )
-        if isinstance(self.extended_post_layer_function, torch.nn.Sequential):
-            for module in self.extended_post_layer_function:
-                if hasattr(module, "num_features"):
-                    warnings.warn(
-                        f"Warning in {self.name}: The extended post layer "
-                        f"function may get a variable input size."
-                    )
-        elif hasattr(self.extended_post_layer_function, "num_features"):
+        if extended_post_layer_function is not None:
+            self._has_explicit_extended_post_layer_function: bool = True
             warnings.warn(
-                f"Warning in {self.name}: The extended post layer "
-                f"function may get a variable input size."
+                "The `extended_post_layer_function` parameter is deprecated and will be "
+                "removed in a future version. Implement `extended_forward` on the modules "
+                "used in `post_layer_function` instead (see `SupportsExtendedForward`).",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            self.extended_post_layer_function: torch.nn.Module = (
+                extended_post_layer_function.to(self.device)
+            )
+        else:
+            self._has_explicit_extended_post_layer_function = False
+            self.extended_post_layer_function = self.post_layer_function
 
         self._allow_growing = allow_growing
         assert not self._allow_growing or isinstance(
@@ -998,15 +1036,9 @@ class GrowingModule(torch.nn.Module):
                             UserWarning,
                         )
 
-                        value *= (
-                            torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
-                                module
-                            )(
-                                torch.tensor(
-                                    GRADIENT_COMPUTATION_EPSILON, device=self.device
-                                )
-                            )
-                        )
+                        value *= torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                            module
+                        )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
                 self._activation_gradient_previous_module = value
 
             else:
@@ -1016,11 +1048,9 @@ class GrowingModule(torch.nn.Module):
                     f"We will try to compute it numerically.",
                     UserWarning,
                 )
-                self._activation_gradient_previous_module = (
-                    torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
-                        inspected_function
-                    )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
-                )
+                self._activation_gradient_previous_module = torch.func.grad(  # pyright: ignore[reportPrivateImportUsage]
+                    inspected_function
+                )(torch.tensor(GRADIENT_COMPUTATION_EPSILON, device=self.device))
         assert self._activation_gradient_previous_module is not None
         return self._activation_gradient_previous_module
 
@@ -1117,9 +1147,9 @@ class GrowingModule(torch.nn.Module):
                 assert value.shape == (1,), "The scaling factor must be a scalar."
                 torch.nn.Module.__setattr__(self, key, value)
             else:
-                assert isinstance(
-                    value, (int, float)
-                ), "The scaling factor must be a scalar."
+                assert isinstance(value, (int, float)), (
+                    "The scaling factor must be a scalar."
+                )
                 self.__dict__[key].data[0] = value
                 # FIXME: should we not recreate the tensor? (problem with the gradient)
             if self.previous_module is None:
@@ -1180,6 +1210,81 @@ class GrowingModule(torch.nn.Module):
             self._pre_activity.retain_grad()
 
         return self.post_layer_function(pre_activity)
+
+    def _apply_extended_post_layer_function(
+        self,
+        pre_activity: torch.Tensor | None,
+        supplementary_pre_activity: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Apply the post-layer function to both main and extension pre-activations.
+
+        When ``extended_post_layer_function`` was provided explicitly (deprecated),
+        the two functions are applied separately for backward compatibility.
+
+        Otherwise ``post_layer_function`` is queried:
+
+        * If it implements :class:`SupportsExtendedForward`, its
+          ``extended_forward(x, x_ext)`` method is called unconditionally;
+          ``None`` handling is delegated to the implementation.
+        * If it is a ``nn.Sequential``, each sub-module is applied in turn,
+          threading ``(x, x_ext)`` through.  Sub-modules that implement
+          :class:`SupportsExtendedForward` use ``extended_forward``; the rest
+          are applied independently to each non-``None`` tensor (valid for
+          stateless modules such as ``nn.ReLU``).
+        * Fallback: the module is applied independently to each non-``None``
+          tensor.
+
+        ``None`` inputs propagate as ``None`` outputs for the corresponding
+        element of the returned tuple.
+
+        Parameters
+        ----------
+        pre_activity: torch.Tensor | None
+            Main pre-activation tensor (N channels / features), or ``None``
+            when the main path is irrelevant (e.g. zero hidden neurons).
+        supplementary_pre_activity: torch.Tensor | None
+            Extension pre-activation tensor (M channels / features) produced by
+            ``extended_output_layer``, or ``None`` when there is no extension.
+
+        Returns
+        -------
+        tuple[torch.Tensor | None, torch.Tensor | None]
+            ``(activity, supplementary_activity)``.  Each element is ``None``
+            when the corresponding input was ``None``.
+        """
+        fn = self.post_layer_function
+        if self._has_explicit_extended_post_layer_function:
+            return (
+                fn(pre_activity) if pre_activity is not None else None,
+                (
+                    self.extended_post_layer_function(supplementary_pre_activity)
+                    if supplementary_pre_activity is not None
+                    else None
+                ),
+            )
+        elif isinstance(fn, SupportsExtendedForward):
+            return fn.extended_forward(pre_activity, supplementary_pre_activity)
+        elif isinstance(fn, torch.nn.Sequential):
+            x: torch.Tensor | None = pre_activity
+            x_ext: torch.Tensor | None = supplementary_pre_activity
+            for module in fn:
+                if isinstance(module, SupportsExtendedForward):
+                    x, x_ext = module.extended_forward(x, x_ext)
+                else:
+                    if x is not None:
+                        x = module(x)
+                    if x_ext is not None:
+                        x_ext = module(x_ext)
+            return x, x_ext
+        else:
+            return (
+                fn(pre_activity) if pre_activity is not None else None,
+                (
+                    fn(supplementary_pre_activity)
+                    if supplementary_pre_activity is not None
+                    else None
+                ),
+            )
 
     def extended_forward(
         self,
@@ -1248,13 +1353,13 @@ class GrowingModule(torch.nn.Module):
             supplementary_pre_activity = (
                 self._scaling_factor_next_module * self.extended_output_layer(x)
             )
-            supplementary_activity = self.extended_post_layer_function(
-                supplementary_pre_activity
+            activity, supplementary_activity = self._apply_extended_post_layer_function(
+                pre_activity, supplementary_pre_activity
             )
+            assert activity is not None  # pre_activity is always a Tensor here
         else:
+            activity = self.post_layer_function(pre_activity)
             supplementary_activity = None
-
-        activity = self.post_layer_function(pre_activity)
 
         return activity, supplementary_activity
 
@@ -1336,9 +1441,9 @@ class GrowingModule(torch.nn.Module):
         """
         if self.store_input:
             if self._internal_store_input:
-                assert (
-                    self._input is not None
-                ), "The input is not stored. Apparently it was not computed yet."
+                assert self._input is not None, (
+                    "The input is not stored. Apparently it was not computed yet."
+                )
                 return self._input
             else:
                 assert self.previous_module, (
@@ -1385,9 +1490,9 @@ class GrowingModule(torch.nn.Module):
         """
         if self.store_pre_activity:
             if self._internal_store_pre_activity:
-                assert (
-                    self._pre_activity is not None
-                ), "The pre-activity is not stored. Apparently it was not computed yet."
+                assert self._pre_activity is not None, (
+                    "The pre-activity is not stored. Apparently it was not computed yet."
+                )
                 return self._pre_activity
             else:
                 assert self.next_module, (
@@ -1559,7 +1664,7 @@ class GrowingModule(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def compute_n_update(self) -> torch.Tensor:
+    def compute_n_update(self) -> tuple[torch.Tensor, int]:
         """
         Compute the update of the tensor N. Should be added to the type of layer.
 
@@ -1567,6 +1672,8 @@ class GrowingModule(torch.nn.Module):
         -------
         torch.Tensor
             update of the tensor N
+        int
+            number of samples used to compute the update
 
         Raises
         ------
@@ -2607,9 +2714,9 @@ class GrowingModule(torch.nn.Module):
         scales: list[float | None] = [scale_output, scale_input]  # type: ignore
         for i, specific_scale in enumerate(scales):
             if specific_scale is None:
-                assert (
-                    scale is not None
-                ), "scale can't be None if scale_input or scale_output is None."
+                assert scale is not None, (
+                    "scale can't be None if scale_input or scale_output is None."
+                )
                 scales[i] = scale
         assert all(isinstance(s, float) for s in scales)
         scales: list[float]
@@ -2840,7 +2947,10 @@ class GrowingModule(torch.nn.Module):
 
     @torch.no_grad()
     def copy_uniform_initialization(
-        self, tensor: torch.Tensor, reference_tensor: torch.Tensor, fan_in: int
+        self,
+        tensor: torch.Tensor,
+        reference_tensor: torch.Tensor | None,
+        fan_in: int,
     ) -> None:
         """
         Initialize tensor with uniform law aligned on reference
@@ -2850,32 +2960,51 @@ class GrowingModule(torch.nn.Module):
         where std(W) is the empirical standard deviation of the reference_tensor
         if the reference_tensor has a non-zero variance.
         Otherwise, use bounds
-        -1 / sqrt(fan_in), 1 / sqrt(fan_in)
-        where fan_in is the number of input features of the
-        extension.
+        -sqrt(6 / fan_in), sqrt(6 / fan_in)
+        where fan_in is the number of input features of the reference tensor + extension.
 
         Parameters
         ----------
         tensor: torch.Tensor
             tensor to initialize
-        reference_tensor: torch.Tensor
-            tensor to get the standard deviation from
+        reference_tensor: torch.Tensor | None
+            tensor to get the standard deviation from or None to use Kaiming init
         fan_in: int
-            number of input features of the extension
+            number of input features of the base tensor + extension
         """
-        # Get the standard deviation from the reference_tensor
+        # Fallback to Kaiming uniform initialization bounds
         if (
-            reference_tensor is not None
-            and (std_dev := reference_tensor.std().item()) > 0
+            reference_tensor is None
+            or reference_tensor.numel() < 2
+            or (std_dev := reference_tensor.std().item()) == 0
         ):
-            std_dev = std_dev
+            self.kaiming_initialization(tensor, reference_tensor, fan_in)
         else:
-            # Fallback to Kaiming uniform initialization bounds
-            std_dev = 1.0 / (fan_in**0.5)
+            # Initialize with uniform distribution
+            bound = 3.0**0.5 * std_dev
+            torch.nn.init.uniform_(tensor, -bound, bound)
 
-        # Initialize with uniform distribution
-        # bound = std_dev**0.5
-        bound = 3.0**0.5 * std_dev
+    @torch.no_grad()
+    def kaiming_initialization(
+        self,
+        tensor: torch.Tensor,
+        reference_tensor: torch.Tensor | None,
+        fan_in: int,
+    ) -> None:
+        """
+        Initialize tensor with Kaiming.
+
+        Parameters
+        ----------
+        tensor: torch.Tensor
+            tensor to initialize
+        reference_tensor: torch.Tensor | None
+            Unused
+        fan_in: int
+            number of input features of the base tensor + extension
+        """
+        del reference_tensor
+        bound = (2.0 * 3.0 / fan_in) ** 0.5
         torch.nn.init.uniform_(tensor, -bound, bound)
 
     @torch.no_grad()
@@ -2904,11 +3033,30 @@ class GrowingModule(torch.nn.Module):
         input_extension_size: int | None
             size of the input extension to create, if None use extension_size
         output_extension_init: str
-            Initialization method for the output extension. Must be one of the keys
-            in `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+            Initialization method for the output extension. Must be one of the keys in
+            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
         input_extension_init: str
             Initialization method for the input extension. Must be one of the keys in
-            `known_inits` (e.g., "copy_uniform", "zeros"). Default is "copy_uniform".
+            `known_inits` ("copy_uniform", "kaiming", "zeros"), default "copy_uniform".
+
+        Notes
+        -----
+        Additional initialization methods can be added by registering them in the
+        local `known_inits` dictionary of this method. Each initialization callable is
+        applied to the extension weight tensor and to the extension bias tensor, if the
+        layer has a bias.
+
+        The callable must accept the following arguments:
+
+        tensor: torch.Tensor
+            Tensor of the weight/bias extension, to initialize.
+        reference_tensor: torch.Tensor | None
+            Weight/bias tensor from the layer before extension.
+        fan_in: int
+            The fan_in of the layer, after including the extension.
+
+        An initialization callable may also modify the existing weights/biases, by
+        mutating `reference_tensor`.
 
         Raises
         ------
@@ -2928,6 +3076,7 @@ class GrowingModule(torch.nn.Module):
 
         known_inits = {
             "copy_uniform": self.copy_uniform_initialization,
+            "kaiming": self.kaiming_initialization,
             "zeros": lambda tensor, _, __: torch.nn.init.zeros_(tensor),
             # Future initializations can be added here
         }
@@ -2945,15 +3094,13 @@ class GrowingModule(torch.nn.Module):
             f"The layer {self.name} has no input extension."
             "Therefore, it can't be initialized."
         )
-        init = input_extension_init
+        init_fn = known_inits[input_extension_init]
+        base_fan_in = self.get_fan_in_from_layer(layer_to_init)
+        ext_fan_in = self.get_fan_in_from_layer(self.layer)
 
-        known_inits[init](
-            layer_to_init.weight, self.weight, self.get_fan_in_from_layer(layer_to_init)
-        )
+        init_fn(layer_to_init.weight, self.weight, base_fan_in + ext_fan_in)
         if layer_to_init.bias is not None:
-            known_inits[init](
-                layer_to_init.bias, self.bias, self.get_fan_in_from_layer(layer_to_init)
-            )
+            init_fn(layer_to_init.bias, self.bias, base_fan_in + ext_fan_in)
 
         # Initialize output extension
         layer_to_init = self.previous_module.extended_output_layer
@@ -2961,18 +3108,15 @@ class GrowingModule(torch.nn.Module):
             f"The previous layer {self.previous_module.name} has no output extension."
             "Therefore, it can't be initialized."
         )
-        init = output_extension_init
-        known_inits[init](
-            layer_to_init.weight,
-            self.previous_module.weight,
-            self.previous_module.get_fan_in_from_layer(layer_to_init),
+
+        init_fn = known_inits[output_extension_init]
+        prev_fan_in = self.previous_module.get_fan_in_from_layer(
+            self.previous_module.layer
         )
+
+        init_fn(layer_to_init.weight, self.previous_module.weight, prev_fan_in)
         if layer_to_init.bias is not None:
-            known_inits[init](
-                layer_to_init.bias,
-                self.previous_module.bias,
-                self.previous_module.get_fan_in_from_layer(layer_to_init),
-            )
+            init_fn(layer_to_init.bias, self.previous_module.bias, prev_fan_in)
 
     def missing_neurons(self) -> int:
         """

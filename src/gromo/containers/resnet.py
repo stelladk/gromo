@@ -21,6 +21,7 @@ from gromo.modules.growing_normalisation import GrowingBatchNorm2d
 class ResNetBasicBlock(SequentialGrowingModel):
     """
     Represents a growing ResNet with basic blocks.
+
     Parameters
     ----------
     in_features : int
@@ -307,7 +308,6 @@ class ResNetBasicBlock(SequentialGrowingModel):
             kwargs_second_layer=kwargs_second_layer,
             pre_activation=pre_activation,
             mid_activation=mid_activation,
-            extended_mid_activation=self.activation,
             pre_addition_function=pre_addition_function,
             name=name,
             target_hidden_channels=out_channels,
@@ -448,6 +448,7 @@ def init_full_resnet_structure(
 ) -> ResNetBasicBlock:
     """
     Initialize a customizable ResNet-style model with basic blocks.
+
     Parameters
     ----------
     input_shape : tuple[int, int, int]
@@ -620,9 +621,9 @@ if __name__ == "__main__":
 
     preact_params = sum(p.numel() for p in model_preact.parameters())
     print(f"Number of parameters (pre-activation): {preact_params}")
-    assert (
-        preact_params == 11_688_616
-    ), f"Expected 11,688,616 parameters but got {preact_params}"
+    assert preact_params == 11_688_616, (
+        f"Expected 11,688,616 parameters but got {preact_params}"
+    )
 
     print("\n" + "=" * 60)
     print("Classical ResNet")
@@ -647,9 +648,9 @@ if __name__ == "__main__":
     torchvision_resnet18 = models.resnet18(weights=None)
     torchvision_params = sum(p.numel() for p in torchvision_resnet18.parameters())
     print(f"Number of parameters (torchvision ResNet-18): {torchvision_params}")
-    assert (
-        classical_params == torchvision_params
-    ), f"Expected {torchvision_params} parameters but got {classical_params}"
+    assert classical_params == torchvision_params, (
+        f"Expected {torchvision_params} parameters but got {classical_params}"
+    )
 
     print("\n" + "=" * 60)
     print("Custom hidden_channels example")
