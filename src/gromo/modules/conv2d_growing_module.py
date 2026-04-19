@@ -593,7 +593,13 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         Check number of previous modules and update input channels and tensor sizes
         """
         if len(self.previous_modules) > 0:
-            new_channels = self.previous_modules[0].out_channels
+            if self.merge_type == "concat":
+                new_channels: int = sum(
+                    int(m.out_channels)
+                    for m in self.previous_modules  # type: ignore[arg-type]
+                )
+            else:
+                new_channels = int(self.previous_modules[0].out_channels)  # type: ignore[arg-type]
             self.in_channels = new_channels
         self.total_in_features = self.sum_in_features(with_bias=True)
 
