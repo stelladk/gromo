@@ -834,6 +834,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     stride=_attributes.get("stride", 1),
                     padding=_attributes.get("padding", default_padding),
                     dilation=_attributes.get("dilation", 1),
+                    groups=_attributes.get("groups", 1),
                     use_bias=_attributes.get("use_bias", self.use_bias),
                     # allow_growing=True,
                     device=self.device,

@@ -701,7 +701,7 @@ class Conv2dGrowingModule(GrowingModule):
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
         input_size: tuple[int, int] | None = None,
-        # groups: int = 1,
+        groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
         extended_post_layer_function: torch.nn.Module | None = None,
@@ -714,6 +714,8 @@ class Conv2dGrowingModule(GrowingModule):
     ) -> None:
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
+        # Each filter sees in_channels // groups input channels (e.g. 1 for depthwise)
+        in_channels_per_group = in_channels // groups
         super(Conv2dGrowingModule, self).__init__(
             layer=torch.nn.Conv2d(
                 in_channels,
@@ -722,6 +724,7 @@ class Conv2dGrowingModule(GrowingModule):
                 stride=stride,
                 padding=padding,
                 dilation=dilation,
+                groups=groups,
                 bias=use_bias,
                 device=device,
             ),
@@ -731,11 +734,11 @@ class Conv2dGrowingModule(GrowingModule):
             next_module=next_module,
             allow_growing=allow_growing,
             tensor_s_shape=(
-                use_bias + in_channels * kernel_size[0] * kernel_size[1],
-                use_bias + in_channels * kernel_size[0] * kernel_size[1],
+                use_bias + in_channels_per_group * kernel_size[0] * kernel_size[1],
+                use_bias + in_channels_per_group * kernel_size[0] * kernel_size[1],
             ),
             tensor_m_shape=(
-                use_bias + in_channels * kernel_size[0] * kernel_size[1],
+                use_bias + in_channels_per_group * kernel_size[0] * kernel_size[1],
                 out_channels,
             ),
             device=device,
@@ -907,7 +910,11 @@ class Conv2dGrowingModule(GrowingModule):
         int
             number of input features (fan-in)
         """
-        return self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+        return (
+            (self.in_channels // self.layer.groups)
+            * self.kernel_size[0]
+            * self.kernel_size[1]
+        )
 
     @property
     def out_features(self) -> int:
@@ -945,6 +952,17 @@ class Conv2dGrowingModule(GrowingModule):
             stride=self.stride,
             dilation=self.dilation,
         )
+        # For grouped/depthwise convolutions, reshape to
+        # [batch, groups, (in_channels//groups)*kh*kw, nb_patch] and average over groups
+        # so that the feature dimension matches in_features = (in_channels//groups)*kh*kw.
+        groups = self.layer.groups
+        if groups > 1:
+            C_per_g = self.in_channels // groups
+            kk = self.kernel_size[0] * self.kernel_size[1]
+            nb_patch = unfolded_input.shape[2]
+            unfolded_input = unfolded_input.view(
+                unfolded_input.shape[0], groups, C_per_g * kk, nb_patch
+            ).mean(dim=1)
         if self.use_bias:
             return torch.cat(
                 (
@@ -1118,7 +1136,7 @@ class Conv2dGrowingModule(GrowingModule):
             )
 
         new_layer = torch.nn.Conv2d(
-            weight.shape[1],
+            weight.shape[1] * self.layer.groups,
             weight.shape[0],
             bias=self.use_bias,
             device=self.device,
@@ -1126,6 +1144,7 @@ class Conv2dGrowingModule(GrowingModule):
             stride=self.stride,  # pyright: ignore[reportArgumentType]
             padding=self.padding,  # pyright: ignore[reportArgumentType]
             dilation=self.dilation,  # pyright: ignore[reportArgumentType]
+            groups=self.layer.groups,
         )
         new_layer.weight = torch.nn.Parameter(weight)
         if bias is not None:
@@ -1868,7 +1887,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
         input_size: tuple[int, int] | None = None,
-        # groups: int = 1,
+        groups: int = 1,
         use_bias: bool = True,
         post_layer_function: torch.nn.Module = torch.nn.Identity(),
         extended_post_layer_function: torch.nn.Module | None = None,
@@ -1887,6 +1906,7 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             padding=padding,
             dilation=dilation,
             input_size=input_size,
+            groups=groups,
             use_bias=use_bias,
             post_layer_function=post_layer_function,
             extended_post_layer_function=extended_post_layer_function,
