@@ -849,9 +849,15 @@ class Conv2dGrowingModule(GrowingModule):
         return self.layer.stride  # type: ignore
 
     def __out_dimension(self, dim: int) -> int:
+        dilation = self.layer.dilation[dim]  # type: ignore[index]
         return (
             int(
-                (self.input_size[dim] - self.kernel_size[dim] + 2 * self.padding[dim])
+                (
+                    self.input_size[dim]
+                    + 2 * self.padding[dim]
+                    - dilation * (self.kernel_size[dim] - 1)
+                    - 1
+                )
                 / self.stride[dim]
             )
             + 1
