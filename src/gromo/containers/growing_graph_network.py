@@ -19,6 +19,7 @@ from gromo.containers.growing_dag import (
 from gromo.modules.conv2d_growing_module import (
     Conv2dGrowingModule,
 )
+from gromo.modules.growing_module import MergeGrowingModule
 from gromo.modules.linear_growing_module import (
     LinearGrowingModule,
     LinearMergeGrowingModule,
@@ -412,18 +413,73 @@ class GrowingGraphNetwork(GrowingContainer):
         bottleneck_keys, input_x_keys = [], []
         if isinstance(bottlenecks, str):
             assert isinstance(activities, str)
-            bottleneck = bottlenecks
             input_x = activities
             for next_node_module in next_node_modules:
                 bottleneck_keys.append(next_node_module._name)
             for prev_node_module in prev_node_modules:
                 input_x_keys.append(prev_node_module._name)
+            # For concat-merge next nodes, MemMapDataset would naively concatenate
+            # the full n*C-channel bottleneck instead of just the C channels this
+            # expansion's edge contributes.  Pre-slice the saved dict and write a
+            # corrected temp file so the DataLoader sees the right shapes.
+            if any(
+                getattr(nm, "merge_type", "sum") == "concat" for nm in next_node_modules
+            ):
+                bott_data = torch.load(bottlenecks, weights_only=False)
+                for nm, out_edge in zip(
+                    next_node_modules, expansion.out_edges, strict=True
+                ):
+                    if getattr(nm, "merge_type", "sum") == "concat":
+                        out_c = (
+                            out_edge.out_features
+                            if isinstance(out_edge, LinearGrowingModule)
+                            else out_edge.out_channels
+                        )
+                        offset = 0
+                        for prev_mod in nm.previous_modules:
+                            if isinstance(prev_mod, MergeGrowingModule):
+                                continue
+                            if prev_mod is out_edge:
+                                break
+                            offset += (
+                                prev_mod.out_features
+                                if isinstance(prev_mod, LinearGrowingModule)
+                                else prev_mod.out_channels
+                            )
+                        bott_data[nm._name] = bott_data[nm._name][
+                            :, offset : offset + out_c, ...
+                        ]
+                bottleneck = bottlenecks[:-3] + "_sliced.pt"
+                torch.save(bott_data, bottleneck)
+            else:
+                bottleneck = bottlenecks
         elif isinstance(bottlenecks, dict):
             assert isinstance(activities, dict)
             bottleneck, input_x = [], []
-            for next_node_module in next_node_modules:
+            for next_node_module, out_edge in zip(
+                next_node_modules, expansion.out_edges, strict=True
+            ):
                 assert next_node_module._name is not None
-                bottleneck.append(bottlenecks[next_node_module._name])
+                b = bottlenecks[next_node_module._name]
+                if getattr(next_node_module, "merge_type", "sum") == "concat":
+                    # For concat-merge nodes the bottleneck has n*C channels but
+                    # this edge only contributes C channels at a specific offset.
+                    if isinstance(out_edge, LinearGrowingModule):
+                        out_c = out_edge.out_features
+                    else:
+                        out_c = out_edge.out_channels
+                    offset = 0
+                    for prev_mod in next_node_module.previous_modules:
+                        if isinstance(prev_mod, MergeGrowingModule):
+                            continue
+                        if prev_mod is out_edge:
+                            break
+                        if isinstance(prev_mod, LinearGrowingModule):
+                            offset += prev_mod.out_features
+                        else:
+                            offset += prev_mod.out_channels
+                    b = b[:, offset : offset + out_c, ...]
+                bottleneck.append(b)
             bottleneck = torch.cat(bottleneck, dim=1)  # (batch_size, total_out_features)
             for prev_node_module in prev_node_modules:
                 assert prev_node_module._name is not None
