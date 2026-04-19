@@ -63,9 +63,11 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         input_volume: int | None = None,
         device: torch.device | None = None,
         name: str | None = None,
+        merge_type: str = "sum",
     ) -> None:
         self.use_bias = True
         self.in_channels: int = in_channels
+        self.merge_type: str = merge_type
         self._input_volume = input_volume
         if isinstance(input_size, int):
             input_size = (input_size, input_size)
@@ -326,7 +328,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
 
         # For Conv2d modules, check kernel size compatibility
         for module in self.next_modules:
-            if isinstance(module, Conv2dGrowingModule):
+            if isinstance(module, Conv2dGrowingModule) and self.merge_type == "sum":
                 assert tuple(module.kernel_size) == tuple(self.kernel_size), (
                     f"Kernel size of next Conv2d modules {module.kernel_size} must match "
                     f"this module's kernel_size {self.kernel_size} (error in {self.name})"
@@ -406,19 +408,34 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
                     "Conv2dMergeGrowingModule."
                 )
 
-            if module.out_channels != self.in_channels:
-                raise ValueError(
-                    "The input channels must match the output channels of "
-                    "the previous modules."
-                )
-            if isinstance(module, Conv2dGrowingModule):
-                if module.output_volume != self.input_volume:
+            # For concat merge: individual edge channels can differ from
+            # self.in_channels; only the aggregate must match (checked below).
+            if self.merge_type == "sum":
+                if module.out_channels != self.in_channels:
                     raise ValueError(
-                        f"The output volume of the previous modules "
-                        f"{module.output_volume} should match the "
-                        f"input volume {self.input_volume=}."
+                        "The input channels must match the output channels of "
+                        "the previous modules."
                     )
+            if isinstance(module, Conv2dGrowingModule):
+                if self.merge_type != "concat":
+                    if module.output_volume != self.input_volume:
+                        raise ValueError(
+                            f"The output volume of the previous modules "
+                            f"{module.output_volume} should match the "
+                            f"input volume {self.input_volume=}."
+                        )
                 self.total_in_features += module.in_features + module.use_bias
+
+        if self.merge_type == "concat" and self.previous_modules:
+            total_out_channels: int = sum(
+                m.out_channels
+                for m in self.previous_modules  # type: ignore[misc]
+            )
+            if total_out_channels != self.in_channels:
+                raise ValueError(
+                    f"For concat merge, sum of previous module out_channels "
+                    f"({total_out_channels}) must equal in_channels ({self.in_channels})."
+                )
 
         if self.total_in_features > 0:
             if self.input_size is None:
