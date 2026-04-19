@@ -458,14 +458,38 @@ class MergeGrowingModule(torch.nn.Module):
 
         deltas = []
         current_index = 0
+        current_out_index = 0  # row offset used for concat-merge nodes
+        is_concat = getattr(self, "merge_type", "sum") == "concat"
         for module in self.previous_modules:
             if isinstance(module, MergeGrowingModule):
                 continue
-            delta_w = delta[:, current_index : current_index + module.in_features]
-            if module.use_bias:
-                delta_b = delta[:, current_index + module.in_features]
+            if is_concat:
+                # Concat-merge: each incoming edge contributes to a disjoint
+                # row-range of the merged output.  Extract the diagonal block.
+                # Row dimension = out_features (channels this edge contributes to concat).
+                # Column dimension = in_features (input features of this edge).
+                # These diverge after growth (e.g. in_channels grows but out_channels stays).
+                out_f = module.out_features
+                delta_w = delta[
+                    current_out_index : current_out_index + out_f,
+                    current_index : current_index + module.in_features,
+                ]
+                delta_b = (
+                    delta[
+                        current_out_index : current_out_index + out_f,
+                        current_index + module.in_features,
+                    ]
+                    if module.use_bias
+                    else None
+                )
+                current_out_index += out_f
             else:
-                delta_b = None
+                delta_w = delta[:, current_index : current_index + module.in_features]
+                delta_b = (
+                    delta[:, current_index + module.in_features]
+                    if module.use_bias
+                    else None
+                )
 
             # change the shape of the delta_w and delta_b to match the layer
             delta_w = delta_w.reshape(*module.weight.shape)
