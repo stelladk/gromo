@@ -746,6 +746,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                         allow_growing=True,
                         device=self.device,
                         name=f"{name}",
+                        merge_type=attributes.get("merge", "sum"),
                     ),
                 )
             else:
@@ -817,9 +818,17 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 kernel_size = _attributes["kernel_size"]
                 input_size = self.get_node_module(prev_node).output_size
                 default_padding = ((kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2)
+                # For concat-merge nodes each edge outputs the source's channel count,
+                # since the merge concatenates all edges to form the full input.
+                next_merge = self.nodes[next_node].get("merge", "sum")
+                edge_out_channels = (
+                    self.nodes[prev_node]["size"]
+                    if next_merge == "concat"
+                    else self.nodes[next_node]["size"]
+                )
                 new_module = FullConv2dGrowingModule(
                     in_channels=self.nodes[prev_node]["size"],
-                    out_channels=self.nodes[next_node]["size"],
+                    out_channels=edge_out_channels,
                     kernel_size=kernel_size,
                     input_size=input_size,
                     stride=_attributes.get("stride", 1),
@@ -1406,21 +1415,28 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
         for node in nx.topological_sort(self):
             if verbose:
                 print(f"{node=}")
+            merge_type = self.nodes[node].get("merge", "sum")
+            activities = []
             for previous_node in self.predecessors(node):
                 module = self.get_edge_module(previous_node, node)
                 if verbose:
                     print("\t-->", module.name, module)
-                module_input = output[previous_node]
-                activity = module(module_input)
+                activity = module(output[previous_node])
+                activities.append(activity)
 
-                assert activity.shape[1] == self.nodes[node]["size"], (
-                    f"{activity.shape[1]=} != {self.nodes[node]['size']=} for {node=}"
-                )
-
-                if node in output:
-                    output[node] = output[node].add(activity)
+            if activities:
+                if merge_type == "concat":
+                    merged = torch.cat(activities, dim=1)
                 else:
-                    output[node] = activity
+                    merged = activities[0]
+                    for a in activities[1:]:
+                        merged = merged.add(a)
+
+                assert merged.shape[1] == self.nodes[node]["size"], (
+                    f"{merged.shape[1]=} != {self.nodes[node]['size']=} for {node=}"
+                )
+                output[node] = merged
+
             # Pass through node
             merge_module = self.get_node_module(node)
             if verbose:
@@ -1466,6 +1482,8 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 continue
             if verbose:
                 print(f"{node=}")
+            merge_type = self.nodes[node].get("merge", "sum")
+            activity_pairs = []
             for previous_node in self.predecessors(node):
                 # Check if previous_node is a candidate node and is not present in the mask
                 if self.is_node_candidate(
@@ -1490,25 +1508,35 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                     use_extended_input=previous_node in mask.get("nodes", []),
                     use_extended_output=node in mask.get("nodes", []),
                 )
-                # activity_ext = (
-                #     activity_ext
-                #     if activity_ext is not None
-                #     else torch.empty(0, x.shape[0], module.out_features, device=self.device)
-                # )
+                activity_pairs.append((activity, activity_ext))
 
-                assert activity.shape[1] == self.nodes[node]["size"]
-
-                if node in output:
-                    output[node] = (
-                        output[node][0].add(activity),
-                        (
-                            output[node][1].add(activity_ext)
-                            if output[node][1] is not None
-                            else activity_ext
-                        ),
-                    )
+            if activity_pairs:
+                if merge_type == "concat":
+                    merged = torch.cat([a for a, _ in activity_pairs], dim=1)
+                    exts = [ae for _, ae in activity_pairs]
+                    if all(ae is None for ae in exts):
+                        merged_ext = None
+                    else:
+                        # Replace None extensions with zero tensors of matching shape
+                        filled = [
+                            ae if ae is not None else torch.zeros_like(a)
+                            for a, ae in activity_pairs
+                        ]
+                        merged_ext = torch.cat(filled, dim=1)
                 else:
-                    output[node] = (activity, activity_ext)
+                    merged = activity_pairs[0][0]
+                    merged_ext = activity_pairs[0][1]
+                    for activity, activity_ext in activity_pairs[1:]:
+                        merged = merged.add(activity)
+                        merged_ext = (
+                            merged_ext.add(activity_ext)
+                            if merged_ext is not None
+                            else activity_ext
+                        )
+
+                assert merged.shape[1] == self.nodes[node]["size"]
+                output[node] = (merged, merged_ext)
+
             # Pass through node
             merge_module = self.get_node_module(node)
             if verbose:
@@ -1516,7 +1544,7 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
 
             output[node] = (
                 merge_module(output[node][0]),
-                merge_module(output[node][1]),
+                merge_module(output[node][1]) if output[node][1] is not None else None,
             )
         if verbose:
             print()
