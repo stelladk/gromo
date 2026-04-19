@@ -479,7 +479,10 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         if not self.previous_modules:
             raise AssertionError(f"No previous modules for {self.name}.")
         n = self.previous_modules[0].input.shape[0]
-        nb_patch = int(self.previous_modules[0].output_volume / self.in_channels)
+        # Use the actual patch count from the stored unfolded activity rather
+        # than from output_volume (which is based on the stored input_size and
+        # may be (1,1) when the real spatial dimensions differ).
+        nb_patch = self.previous_modules[0].unfolded_extended_input.shape[2]
         full_activity = torch.ones(
             (
                 n,
@@ -492,7 +495,7 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
         for module in self.previous_modules:
             full_activity[
                 :, current_index : current_index + module.in_features + module.use_bias, :
-            ] = module.unfolded_extended_input
+            ] = module.unfolded_extended_input[:, :, :nb_patch]
             # (n, in_channels*ks0*ks1+bias, w_out*h_out)
             current_index += module.in_features + module.use_bias
         return full_activity
@@ -534,8 +537,16 @@ class Conv2dMergeGrowingModule(MergeGrowingModule):
             self.construct_full_activity()
         )  # (n, total_in_parameters, W_out*H_out)
         desired_activation = self.pre_activity.grad.flatten(start_dim=-2)
+        # When post_layer_function changes the spatial size (e.g. stride-2 pool),
+        # the input patch count and output gradient patch count can differ.
+        # Truncate both to the minimum to keep the einsum consistent.
+        nb_patch = min(full_activity.shape[2], desired_activation.shape[2])
         return (
-            torch.einsum("iam, icm -> ac", full_activity, desired_activation),
+            torch.einsum(
+                "iam, icm -> ac",
+                full_activity[:, :, :nb_patch],
+                desired_activation[:, :, :nb_patch],
+            ),
             self.input.shape[0],
         )
 
