@@ -11,6 +11,8 @@ from gromo.modules.linear_growing_module import (
 )
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
+    KnownThresholdRuleName,
+    ThresholdRule,
     apply_border_effect_on_unfolded,
     compute_mask_tensor_t,
     compute_output_shape_conv,
@@ -1714,8 +1716,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None = None,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -1726,6 +1728,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -1734,11 +1738,16 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
 
         Parameters
         ----------
-        numerical_threshold: float
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None
             threshold to consider an eigenvalue as zero in the square root of the
-            inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            inverse of S.
+            None for the numerical floor only (see `numerical_floor_terms`); a
+            value or a rule can only raise the floor. When a rule is given it is
+            bound to the previous module's ``tensor_s``. Known rule names are
+            ``"mean_over_sqrt_n"`` and ``"operator_norm_noise_threshold"``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
@@ -1762,8 +1771,14 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
         fisher_shrinkage: float
             shrinkage intensity alpha in [0, 1]. If > 0, replace E by the
             Ledoit-Wolf-style convex combination
-            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it without
-            truncation. Only has an effect when ``use_fisher`` is True.
+            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it at
+            the numerical floor without its worst-case term. Only has an effect
+            when ``use_fisher`` is True.
+        collect_spectra: bool
+            if True, record the growth spectra in ``self.growth_spectra``
+        worst_case_numerical_floor: bool
+            whether the numerical floor includes its worst-case term, the default
+            tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`)
 
         Returns
         -------
@@ -1788,6 +1803,8 @@ class RestrictedConv2dGrowingModule(Conv2dGrowingModule):
             ignore_singular_values=ignore_singular_values,
             use_fisher=use_fisher,
             fisher_shrinkage=fisher_shrinkage,
+            collect_spectra=collect_spectra,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
 
         k = self.eigenvalues_extension.shape[0]
@@ -2166,8 +2183,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None = None,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -2178,6 +2195,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,  # noqa: ARG002
+        collect_spectra: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2186,11 +2205,16 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
 
         Parameters
         ----------
-        numerical_threshold: float
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None
             threshold to consider an eigenvalue as zero in the square root of
-            the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            the inverse of S.
+            None for the numerical floor only (see `numerical_floor_terms`); a
+            value or a rule can only raise the floor. When a rule is given it is
+            bound to the previous module's ``tensor_s``. Known rule names are
+            ``"mean_over_sqrt_n"`` and ``"operator_norm_noise_threshold"``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
@@ -2216,6 +2240,11 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
         fisher_shrinkage: float
             accepted for interface compatibility; has no effect since
             ``use_fisher`` is not supported here (see Raises).
+        collect_spectra: bool
+            if True, record the growth spectra in ``self.growth_spectra``
+        worst_case_numerical_floor: bool
+            whether the numerical floor includes its worst-case term, the default
+            tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`)
 
         Returns
         -------
@@ -2247,6 +2276,8 @@ class FullConv2dGrowingModule(Conv2dGrowingModule):
             omega_zero=omega_zero,
             use_projection=use_projection,
             ignore_singular_values=ignore_singular_values,
+            collect_spectra=collect_spectra,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
 
         k = self.eigenvalues_extension.shape[0]

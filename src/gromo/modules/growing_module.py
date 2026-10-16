@@ -7,6 +7,7 @@ from typing import (
     Literal,
     Protocol,
     get_args,
+    overload,
     runtime_checkable,
 )
 
@@ -16,8 +17,12 @@ import torch
 from gromo.config.loader import load_config
 from gromo.utils.tensor_statistic import TensorStatistic
 from gromo.utils.tools import (
+    KnownThresholdRuleName,
+    SpectrumThreshold,
+    ThresholdRule,
     compute_optimal_added_parameters,
     optimal_delta,
+    resolve_threshold_rule,
 )
 from gromo.utils.utils import (
     compute_tensor_stats,
@@ -58,6 +63,69 @@ def _shrink_psd_matrix(matrix: torch.Tensor, shrinkage: float) -> torch.Tensor:
     return (1 - shrinkage) * matrix + shrinkage * (matrix.trace() / d) * torch.eye(
         d, device=matrix.device, dtype=matrix.dtype
     )
+
+
+@overload
+def _bind_threshold(threshold: None, statistic: TensorStatistic) -> None: ...
+
+
+@overload
+def _bind_threshold(
+    threshold: float | KnownThresholdRuleName | ThresholdRule,
+    statistic: TensorStatistic,
+) -> float | SpectrumThreshold: ...
+
+
+def _bind_threshold(
+    threshold: float | KnownThresholdRuleName | ThresholdRule | None,
+    statistic: TensorStatistic,
+) -> float | SpectrumThreshold | None:
+    """Bind a threshold rule to the statistic the thresholded matrix was estimated from.
+
+    Parameters
+    ----------
+    threshold: float | KnownThresholdRuleName | ThresholdRule | None
+        None, a value, the name of a rule of `KNOWN_THRESHOLD_RULES`, or a rule
+    statistic: TensorStatistic
+        statistic the thresholded matrix was estimated from
+
+    Returns
+    -------
+    float | SpectrumThreshold | None
+        None or the value unchanged, or the rule partially applied with the
+        statistic
+    """
+    if not isinstance(threshold, str) and not callable(threshold):
+        return threshold
+    # threshold is a name or a rule here; ty keeps "a callable float" in the union.
+    return partial(
+        resolve_threshold_rule(threshold),  # ty: ignore[invalid-argument-type]
+        statistic,
+    )
+
+
+def _cast_spectra(spectra: dict[str, Any], dtype: torch.dtype) -> dict[str, Any]:
+    """Cast the tensors of a spectra dictionary back to a given dtype.
+
+    Parameters
+    ----------
+    spectra: dict[str, Any]
+        nested dictionary as filled by `compute_optimal_added_parameters`
+    dtype: torch.dtype
+        dtype to cast the recorded tensors to
+
+    Returns
+    -------
+    dict[str, Any]
+        the same dictionary, with its tensors cast
+    """
+    for entry in spectra.values():
+        if not isinstance(entry, dict):
+            continue
+        for key, value in entry.items():
+            if isinstance(value, torch.Tensor):
+                entry[key] = value.to(dtype=dtype)
+    return spectra
 
 
 class MergeGrowingModule(torch.nn.Module):
@@ -471,6 +539,7 @@ class MergeGrowingModule(torch.nn.Module):
         return_deltas: bool = False,
         force_pseudo_inverse: bool = False,
         dtype: torch.dtype = torch.float32,
+        worst_case_numerical_floor: bool = True,
     ) -> list[tuple[torch.Tensor, torch.Tensor]] | None:
         """
         Compute the optimal delta for each previous layer using current S and M tensors.
@@ -488,6 +557,9 @@ class MergeGrowingModule(torch.nn.Module):
             matrix is invertible
         dtype: torch.dtype
             dtype for S and M during the computation
+        worst_case_numerical_floor: bool
+            whether the numerical floor of the pseudo-inverse includes its
+            worst-case term (see `optimal_delta`)
 
         Returns
         -------
@@ -515,6 +587,7 @@ class MergeGrowingModule(torch.nn.Module):
             previous_tensor_m,
             dtype=dtype,
             force_pseudo_inverse=force_pseudo_inverse,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
 
         deltas = []
@@ -962,6 +1035,10 @@ class GrowingModule(torch.nn.Module):
         # sqrt(singular value) is baked into the extension weights; False in the
         # ignore_singular_values regime where alpha and omega are unit-scaled.
         self._first_order_uses_squared_singular_values: bool = True
+        # Spectra recorded at the last collecting compute_optimal_updates call. It is a
+        # snapshot: later changes to the update (sub-selection, rescaling) do not
+        # update it.
+        self.growth_spectra: dict[str, Any] | None = None
         self._activation_gradient_previous_module: torch.Tensor | None = None
 
         self.delta_raw: torch.Tensor | None = None
@@ -2271,6 +2348,8 @@ class GrowingModule(torch.nn.Module):
         force_pseudo_inverse: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_delta_spectrum: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | float]:
         r"""
         Compute the optimal delta for the layer using current S and M tensors.
@@ -2305,6 +2384,13 @@ class GrowingModule(torch.nn.Module):
             it as a preconditioner, so a near-singular E does not force the
             pseudo-inverse fallback below. Only has an effect when
             ``use_fisher`` is True.
+        collect_delta_spectrum: bool
+            if True, record the singular values of the optimal delta under the
+            ``"delta"`` key of ``self.growth_spectra``. This is an additional
+            decomposition, hence opt-in.
+        worst_case_numerical_floor: bool
+            whether the numerical floor of the pseudo-inverses includes its
+            worst-case term (see `optimal_delta`)
 
         Returns
         -------
@@ -2322,13 +2408,18 @@ class GrowingModule(torch.nn.Module):
                 tensor_covariance_loss_gradient, fisher_shrinkage
             )
 
+        delta_spectra: dict[str, Any] | None = {} if collect_delta_spectrum else None
         self.delta_raw, parameter_update_decrease = optimal_delta(
             tensor_s,
             tensor_m,
             dtype=dtype,
             force_pseudo_inverse=force_pseudo_inverse,
             tensor_covariance_loss_gradient=tensor_covariance_loss_gradient,
+            spectra=delta_spectra,
+            worst_case_numerical_floor=worst_case_numerical_floor,
         )
+        if delta_spectra is not None:
+            self.growth_spectra = (self.growth_spectra or {}) | {"delta": delta_spectra}
 
         if self.use_bias:
             delta_weight = self.delta_raw[:, :-1]
@@ -2346,8 +2437,8 @@ class GrowingModule(torch.nn.Module):
 
     def _auxiliary_compute_alpha_omega(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None = None,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         dtype: torch.dtype = torch.float32,
         use_covariance: bool = True,
@@ -2357,6 +2448,8 @@ class GrowingModule(torch.nn.Module):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Auxiliary function to compute the optimal added parameters (alpha, omega, k)
@@ -2365,11 +2458,16 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        numerical_threshold: float
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None
             threshold to consider an eigenvalue as zero in the square root of
-            the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            the inverse of S.
+            None for the numerical floor only (see `numerical_floor_terms`); a
+            value or a rule can only raise the floor. When a rule is given it is
+            bound to the previous module's ``tensor_s``. Known rule names are
+            ``"mean_over_sqrt_n"`` and ``"operator_norm_noise_threshold"``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         dtype: torch.dtype
@@ -2391,9 +2489,18 @@ class GrowingModule(torch.nn.Module):
         fisher_shrinkage: float
             shrinkage intensity alpha in [0, 1]. If > 0, replace E by the
             Ledoit-Wolf-style convex combination
-            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it without
-            truncation. Avoids the absolute-threshold rank collapse of E when
-            the gradient covariance spectrum sits near the numerical threshold.
+            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it at the numerical
+            floor without its worst-case term, which could cut the shrunk
+            eigenvalues alpha * tr(E)/d. In bfloat16, the precision term of the
+            floor (eps * lambda_1, about 7.8e-3 * lambda_1) still truncates E when
+            alpha * tr(E)/d falls below it.
+        collect_spectra: bool
+            if True, record the whitening spectra of S and E and the singular
+            values of the SVD target under the ``"matrix_s"``, ``"matrix_e"`` and
+            ``"extension"`` keys of ``self.growth_spectra``
+        worst_case_numerical_floor: bool
+            whether the numerical floor includes its worst-case term, the default
+            tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`)
 
         Returns
         -------
@@ -2418,6 +2525,9 @@ class GrowingModule(torch.nn.Module):
         matrix_e = self.covariance_loss_gradient() if use_fisher else None
 
         saved_dtype = matrix_n.dtype
+        # The statistics share the dtype they were accumulated in, which bounds their
+        # precision even after the cast below.
+        source_dtype = (matrix_s if matrix_s is not None else matrix_n).dtype
         if matrix_n.dtype != dtype:
             matrix_n = matrix_n.to(dtype=dtype)
         if matrix_s is not None and matrix_s.dtype != dtype:
@@ -2425,28 +2535,56 @@ class GrowingModule(torch.nn.Module):
         if matrix_e is not None and matrix_e.dtype != dtype:
             matrix_e = matrix_e.to(dtype=dtype)
 
-        e_numerical_threshold: float | None = None
+        e_numerical_threshold: float | SpectrumThreshold | None = None
+        e_worst_case_numerical_floor: bool | None = None
         if matrix_e is not None and fisher_shrinkage > 0:
             matrix_e = _shrink_psd_matrix(matrix_e, fisher_shrinkage)
+            # 0.0 is the floor (None would fall back to the threshold of S), and the
+            # worst-case term could cut the shrunk eigenvalues.
             e_numerical_threshold = 0.0
+            e_worst_case_numerical_floor = False
+        elif matrix_e is not None:
+            e_numerical_threshold = _bind_threshold(
+                numerical_threshold, self.covariance_loss_gradient
+            )
 
-        # Call tools function with primitive options
+        # Call tools function with primitive options.
+        # Bind each threshold to the statistic its matrix was estimated from, and only
+        # when that matrix is used: tensor_s_growth raises when there is none.
+        spectra: dict[str, Any] | None = {} if collect_spectra else None
+        if matrix_s is not None:
+            numerical_threshold_covariance = _bind_threshold(
+                numerical_threshold, self.tensor_s_growth
+            )
+        else:
+            numerical_threshold_covariance = 0.0
         alpha, omega, eigenvalues_extension = compute_optimal_added_parameters(
             matrix_s=matrix_s,
             matrix_n=matrix_n,
-            numerical_threshold=numerical_threshold,
-            statistical_threshold=statistical_threshold,
+            numerical_threshold=numerical_threshold_covariance,
+            statistical_threshold=_bind_threshold(
+                statistical_threshold, self.tensor_m_prev
+            ),
             maximum_added_neurons=maximum_added_neurons,
             alpha_zero=alpha_zero,
             omega_zero=omega_zero,
             ignore_singular_values=ignore_singular_values,
             matrix_covariance_loss_gradient=matrix_e,
             e_numerical_threshold=e_numerical_threshold,
+            spectra=spectra,
+            source_dtype=source_dtype,
+            worst_case_numerical_floor=worst_case_numerical_floor,
+            e_worst_case_numerical_floor=e_worst_case_numerical_floor,
         )
 
         alpha = alpha.to(dtype=saved_dtype)
         omega = omega.to(dtype=saved_dtype)
         eigenvalues_extension = eigenvalues_extension.to(dtype=saved_dtype)
+
+        if spectra is not None:
+            self.growth_spectra = (self.growth_spectra or {}) | _cast_spectra(
+                spectra, saved_dtype
+            )
 
         # Record how the singular values enter the extension so first_order_improvement
         # and scale_layer_extension know whether to square eigenvalues_extension.
@@ -2456,8 +2594,8 @@ class GrowingModule(torch.nn.Module):
 
     def _compute_optimal_added_parameters(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None = None,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -2468,6 +2606,8 @@ class GrowingModule(torch.nn.Module):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, torch.Tensor]:
         """
         Compute the optimal added parameters to extend the input layer.
@@ -2477,11 +2617,16 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        numerical_threshold: float
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None
             threshold to consider an eigenvalue as zero in the square root of
-            the inverse of S
-        statistical_threshold: float
-            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N
+            the inverse of S.
+            None for the numerical floor only (see `numerical_floor_terms`); a
+            value or a rule can only raise the floor. When a rule is given it is
+            bound to the previous module's ``tensor_s``. Known rule names are
+            ``"mean_over_sqrt_n"`` and ``"operator_norm_noise_threshold"``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
+            threshold to consider an eigenvalue as zero in the SVD of S{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             maximum number of added neurons, if None all significant neurons are kept
         update_previous: bool
@@ -2505,8 +2650,14 @@ class GrowingModule(torch.nn.Module):
         fisher_shrinkage: float
             shrinkage intensity alpha in [0, 1]. If > 0, replace E by the
             Ledoit-Wolf-style convex combination
-            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it without
-            truncation. Only has an effect when ``use_fisher`` is True.
+            (1 - alpha) * E + alpha * tr(E)/d * I and whiten it at
+            the numerical floor without its worst-case term. Only has an effect
+            when ``use_fisher`` is True.
+        collect_spectra: bool
+            if True, record the growth spectra in ``self.growth_spectra``
+        worst_case_numerical_floor: bool
+            whether the numerical floor includes its worst-case term, the default
+            tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`)
 
         Returns
         -------
@@ -2563,8 +2714,8 @@ class GrowingModule(torch.nn.Module):
 
     def compute_optimal_updates(
         self,
-        numerical_threshold: float = 1e-6,
-        statistical_threshold: float = 1e-3,
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None = None,
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule = 1e-3,
         maximum_added_neurons: int | None = None,
         update_previous: bool = True,
         dtype: torch.dtype = torch.float32,
@@ -2576,6 +2727,9 @@ class GrowingModule(torch.nn.Module):
         ignore_singular_values: bool = False,
         use_fisher: bool = False,
         fisher_shrinkage: float = 0.0,
+        collect_spectra: bool = False,
+        collect_delta_spectrum: bool = False,
+        worst_case_numerical_floor: bool = True,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
         Compute the optimal update and additional neurons.
@@ -2604,11 +2758,16 @@ class GrowingModule(torch.nn.Module):
 
         Parameters
         ----------
-        numerical_threshold: float
+        numerical_threshold: float | KnownThresholdRuleName | ThresholdRule | None
             Threshold to consider an eigenvalue as zero in the square root of
             the inverse of S (covariance matrix).
-        statistical_threshold: float
+            None for the numerical floor only (see `numerical_floor_terms`); a
+            value or a rule can only raise the floor. When a rule is given it is
+            bound to the previous module's ``tensor_s``. Known rule names are
+            ``"mean_over_sqrt_n"`` and ``"operator_norm_noise_threshold"``.
+        statistical_threshold: float | KnownThresholdRuleName | ThresholdRule
             Threshold to consider an eigenvalue as zero in the SVD of S^{-1/2} N.
+            When a rule is given it is bound to ``tensor_m_prev``.
         maximum_added_neurons: int | None
             Maximum number of added neurons. If None, all significant neurons are kept.
         update_previous: bool
@@ -2638,8 +2797,20 @@ class GrowingModule(torch.nn.Module):
             preconditioner for delta and neuron-extension computations.
         fisher_shrinkage: float
             Shrinkage intensity alpha in [0, 1]. If > 0, shrink the gradient
-            covariance E to (1 - alpha) * E + alpha * tr(E)/d * I and whiten it
-            without truncation.
+            covariance E to (1 - alpha) * E + alpha * tr(E)/d * I and whiten it at
+            the numerical floor without its worst-case term.
+        collect_spectra: bool
+            Whether to record the growth spectra in ``self.growth_spectra``: the
+            whitening spectra of S and E and the singular values of the SVD
+            target, with the thresholds applied and the resulting counts.
+        collect_delta_spectrum: bool
+            Whether to also record the singular values of the optimal delta.
+            Requires an additional decomposition, hence a separate flag.
+        worst_case_numerical_floor: bool
+            Whether the numerical floor includes its worst-case term, the default
+            tolerance of `torch.linalg.pinv` (see `numerical_floor_terms`). It
+            applies to the whitening of S and E and to the pseudo-inverses of the
+            optimal delta.
 
         Returns
         -------
@@ -2658,12 +2829,19 @@ class GrowingModule(torch.nn.Module):
         #   (needed for tensor_n), but do not create optimal_delta_layer.
         # - compute_delta=False/use_projection=False: no natural-gradient step,
         #   so set the corresponding first-order term to zero.
+        self.growth_spectra = (
+            dict.fromkeys(("delta", "matrix_s", "matrix_e", "extension"))
+            if collect_spectra or collect_delta_spectrum
+            else None
+        )
         if compute_delta:
             self.compute_optimal_delta(
                 update=True,
                 dtype=dtype,
                 use_fisher=use_fisher,
                 fisher_shrinkage=fisher_shrinkage,
+                collect_delta_spectrum=collect_delta_spectrum,
+                worst_case_numerical_floor=worst_case_numerical_floor,
             )
         else:
             self.optimal_delta_layer = None
@@ -2678,6 +2856,8 @@ class GrowingModule(torch.nn.Module):
                     dtype=dtype,
                     use_fisher=use_fisher,
                     fisher_shrinkage=fisher_shrinkage,
+                    collect_delta_spectrum=collect_delta_spectrum,
+                    worst_case_numerical_floor=worst_case_numerical_floor,
                 )
             else:
                 self.delta_raw = None
@@ -2703,6 +2883,8 @@ class GrowingModule(torch.nn.Module):
                 ignore_singular_values=ignore_singular_values,
                 use_fisher=use_fisher,
                 fisher_shrinkage=fisher_shrinkage,
+                collect_spectra=collect_spectra,
+                worst_case_numerical_floor=worst_case_numerical_floor,
             )
             return alpha_weight, alpha_bias
         elif isinstance(self.previous_module, MergeGrowingModule):
@@ -2864,6 +3046,7 @@ class GrowingModule(torch.nn.Module):
         # this type problem is due to the use of the setter to change the scaling factor
         self.parameter_update_decrease = None
         self.eigenvalues_extension = None
+        self.growth_spectra = None
         self._first_order_uses_squared_singular_values = True
         self._pre_activity = None
         self._input = None

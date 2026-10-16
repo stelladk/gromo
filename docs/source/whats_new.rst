@@ -20,12 +20,20 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add a numerical floor under every eigenvalue threshold of ``S`` and ``E``: the maximum of the default tolerance of ``torch.linalg.pinv`` (``d * eps * lambda_1`` in the dtype of the eigendecomposition), one ulp of ``lambda_1`` in the less precise of the accumulation and inversion dtypes, and twice the most negative eigenvalue, which measures the noise of low-precision (e.g. bfloat16) statistics. The first term can be switched off with ``worst_case_numerical_floor=False``, forwarded by the growth APIs and the containers; it is off for the shrunk ``E`` of ``fisher_shrinkage``. The floor replaces the absolute fallback of :gh:`275`, records its terms in the spectra (``"numerical_floor"``, ``"numerical_floor_terms"``), and also applies to the pseudo-inverses of ``optimal_delta`` (``pseudo_inverse_matrix_semi_positive``). Add the threshold rule ``"operator_norm_noise_threshold"`` (a conservative estimate of the operator norm of the estimation error) and ``TensorStatistic.dtype`` (:gh:`XXX` by `Théo Rudkiewicz`_).
+- Allow the eigenvalue thresholds of the growth APIs to be data-dependent: ``numerical_threshold`` and ``statistical_threshold`` now accept a threshold rule (or its name, e.g. ``"mean_over_sqrt_n"``) mapping the ``TensorStatistic`` the thresholded matrix was estimated from and its spectrum to a threshold. The default of ``numerical_threshold`` changes in :gh:`XXX` (see API changes) (:gh:`275` by `Théo Rudkiewicz`_).
+- Expose the spectra computed during growth: ``GrowingModule.compute_optimal_updates`` gains ``collect_spectra`` and ``collect_delta_spectrum``, which record in ``GrowingModule.growth_spectra`` the whitening spectra of ``S`` and ``E``, the singular values of the SVD target before selection and those of the optimal delta, together with the thresholds applied and the resulting counts. Add ``spectrum_summary`` to derive the usual scalars from a spectrum (:gh:`275` by `Théo Rudkiewicz`_).
 - Add the Zenodo DOI to ``CITATION.cff`` and the README, with PyPI, Python versions, documentation and DOI badges, and set the development status to beta (:gh:`280` by `Sylvain Chevallier`_)
+
 Bugs
 ~~~~
 
+- Fix the pseudo-inverses of ``optimal_delta``: after a cast to a more precise dtype, including in its float64 retry, they kept the rounding noise of the statistics, and ``torch.linalg.pinv`` inverted negative noise eigenvalues with their wrong sign; both are now dropped by the numerical floor. The retry now returns tensors in the dtype of the statistics. ``sqrt_inverse_matrix_semi_positive`` no longer modifies its input matrix when ``eigh`` fails (:gh:`XXX` by `Théo Rudkiewicz`_)
+
 API changes
 ~~~~~~~~~~~
+
+- ``numerical_threshold`` defaults to ``None``, the numerical floor, instead of ``1e-6``, and explicit values are floored like rules: a threshold can only raise the floor, and falls back to it when it would drop the whole spectrum of a non-zero matrix. ``0`` (and ``e_numerical_threshold=0.0``) now means the floor, not "keep everything". Results change in both directions: the floor is relative, so a matrix of small scale (``lambda_1 < 8.4 / d`` in float32, typical of the gradient covariance ``E``) keeps more directions than with the absolute ``1e-6``; for larger scales, directions below ``d * eps * lambda_1`` are dropped (``worst_case_numerical_floor=False`` keeps them); with bfloat16 statistics, rounding-noise directions are dropped. (:gh:`XXX` by `Théo Rudkiewicz`_).
 
 
 .. _changes_0_1_0:
