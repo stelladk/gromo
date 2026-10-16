@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Prepare the packaging for PyPI: single-sourced version in ``gromo/__init__.py``, BSD-3-Clause licence metadata, project URLs and classifiers, lighter runtime dependencies and source distribution, and a ``CITATION.cff`` file (:gh:`276` by `Sylvain Chevallier`_)
 - Add ``fisher_shrinkage`` to ridge-shrink the empirical-Fisher gradient-covariance matrix ``E`` toward a scaled identity, avoiding rank collapse under whitening, and add exact ("true") Fisher accumulation for classification (``GrowingContainer.accumulate_true_fisher_covariance``) as a lower-variance alternative to the empirical Fisher (:gh:`267` by `Hugo Mousset`_).
 - Split ``create_layer_extensions`` into ``allocate_layer_extensions`` (create the extension layers) and ``initialize_extensions`` (set their values), so that already created extensions can be re-initialized, and promote the extension initializations to the ``GrowingModule.KNOWN_EXTENSION_INITS`` registry, that also accepts custom callables. ``copy_initialization_variance``, ``kaiming_initialization`` and the new ``zeros_initialization`` are now static methods, of signature ``(tensor, reference_tensor, fan_in)`` (:gh:`272` by `Théo Rudkiewicz`_).
 - Add Kaiming-normal and copy-normal initializations for layer extensions: ``kaiming_initialization`` and ``copy_initialization_variance`` (renamed from ``copy_uniform_initialization``) gain a ``distribution`` argument, exposed through the new ``"kaiming_normal"`` and ``"copy_normal"`` keys of ``create_layer_extensions`` (:gh:`259` by `Théo Rudkiewicz`_).
@@ -107,6 +108,7 @@ Enhancements
 Bugs
 ~~~~
 
+- Rename the unused ``**_`` argument of ``GrowingContainer.dummy_select_update`` to ``**kwargs``, as pydoclint >= 0.10 ignores ``_`` and rejected its docstring (:gh:`276` by `Sylvain Chevallier`_)
 - Fix ``first_order_improvement`` when ``ignore_singular_values=True``: the new-neuron term now sums the singular values instead of squaring them, consistent with the unit-scaled extension weights, and ``scale_layer_extension`` is adjusted accordingly (:gh:`261` by `Théo Rudkiewicz`_)
 - Fix orientation of non-square images in `__make_safe_forward` (:gh:`230` by `Stella Douka`_)
 - Address training instability in `GrowingDAG` (:gh:`210` by `Stella Douka`_)
@@ -132,6 +134,7 @@ Bugs
 API changes
 ~~~~~~~~~~~
 
+- Drop support for Python 3.10, which reached its end of life, and test on Python 3.11 to 3.14 (:gh:`276` by `Sylvain Chevallier`_)
 - ``compute_optimal_updates()`` now exposes primitive boolean controls (``compute_delta``, ``use_covariance``, ``alpha_zero``, ``use_projection``) and growth-related defaults are intentionally unified to ``numerical_threshold=1e-6`` and ``statistical_threshold=1e-3`` for consistency across modules. Migration for direct internal calls: ``compute_optimal_added_parameters()`` is now ``_compute_optimal_added_parameters()``; external users should prefer ``compute_optimal_updates()`` (:gh:`193` by `Stéphane Rivaud`_)
 - Allow growth between two `GrowingDAG` modules (:gh:`148` & :gh:`179` by `Stella Douka`_)
 - Apply all candidate expansions on the same `GrowingDAG` without deepcopy (:gh:`148` by `Stella Douka`_)
