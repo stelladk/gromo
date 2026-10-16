@@ -20,6 +20,7 @@ Develop branch
 Enhancements
 ~~~~~~~~~~~~
 
+- Add the Zenodo DOI to ``CITATION.cff`` and the README, with PyPI, Python versions, documentation and DOI badges, and set the development status to beta (:gh:`280` by `Sylvain Chevallier`_)
 Bugs
 ~~~~
 
