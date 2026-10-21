@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from gromo.containers.growing_container import GrowingContainer
-from gromo.modules.constant_module import ConstantModule
+from gromo.modules.constant_module import ConstantConvModule, ConstantModule
 from gromo.modules.conv2d_growing_module import (
     Conv2dMergeGrowingModule,
     FullConv2dGrowingModule,
@@ -812,15 +812,24 @@ class GrowingDAG(nx.DiGraph, GrowingContainer):
                 _attributes = edge_attributes
 
             if _attributes.get("constant"):
-                self.__set_edge_module(
-                    prev_node,
-                    next_node,
-                    ConstantModule(
+                if (
+                    self.nodes[prev_node]["type"] == "convolution"
+                    and self.nodes[next_node]["type"] == "convolution"
+                ):
+                    constant = ConstantConvModule(
+                        in_channels=self.nodes[prev_node]["size"],
+                        out_channels=self.nodes[next_node]["size"],
+                        kernel_size=_attributes.get("kernel_size", self.kernel_size),
+                        input_size=self.get_node_module(prev_node).output_size,
+                        device=self.device,
+                    )
+                else:
+                    constant = ConstantModule(
                         in_features=self.get_node_module(prev_node).out_features,
                         out_features=self.nodes[next_node]["size"],
                         device=self.device,
-                    ),
-                )
+                    )
+                self.__set_edge_module(prev_node, next_node, constant)
                 self[prev_node][next_node]["type"] = "constant"
                 continue
             # If both nodes are linear
